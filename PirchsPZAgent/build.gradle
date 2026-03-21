@@ -1,0 +1,15 @@
+plugins {
+    id 'java'
+}
+
+jar {
+    archiveBaseName = 'PirchsPZAgent'
+
+    manifest {
+        attributes(
+            'Premain-Class': 'pirch.pzagent.AgentEntry',
+            'Can-Redefine-Classes': 'false',
+            'Can-Retransform-Classes': 'false'
+        )
+    }
+}

@@ -1,0 +1,42 @@
+subprojects {
+    apply plugin: 'java'
+
+    group = 'pirch'
+    version = '0.0.1'
+
+    repositories {
+        mavenCentral()
+    }
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+}
+
+tasks.register('installToMod') {
+    dependsOn ':PirchsPZLoader:jar', ':PirchsPZBridge:jar'
+
+    doLast {
+        def modLib = file("C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib")
+
+        copy {
+            from project(':PirchsPZLoader').tasks.jar.archiveFile
+            into modLib
+        }
+
+        copy {
+            from project(':PirchsPZBridge').tasks.jar.archiveFile
+            into modLib
+        }
+
+        copy {
+            from project(':PirchsPZBridge').configurations.runtimeClasspath
+            into modLib
+            include 'postgresql-*.jar'
+        }
+
+        println "Jars copied to PZ mod folder."
+    }
+}

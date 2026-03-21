@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Premain-Class: pirch.pzagent.AgentEntry
+Can-Redefine-Classes: false
+Can-Retransform-Classes: false
