@@ -14,7 +14,8 @@ public final class SchemaManager {
         "002_wallet.sql",
         "002_nodes.sql",
         "003_transactions.sql",
-        "003_account_nodes.sql"
+        "003_account_nodes.sql",
+        "004_account_identity_columns.sql"
     };
 
     private SchemaManager() {
@@ -38,15 +39,13 @@ public final class SchemaManager {
 
     private static void executeSql(String resourcePath) {
         try (InputStream inputStream = SchemaManager.class
-            .getClassLoader()
-            .getResourceAsStream(resourcePath)) {
-
+                .getClassLoader()
+                .getResourceAsStream(resourcePath)) {
             if (inputStream == null) {
                 return;
             }
 
             StringBuilder sql = new StringBuilder();
-
             try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(inputStream, StandardCharsets.UTF_8)
             )) {

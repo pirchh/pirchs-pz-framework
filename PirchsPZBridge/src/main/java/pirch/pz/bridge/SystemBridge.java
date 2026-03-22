@@ -2,62 +2,97 @@ package pirch.pz.bridge;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 import pirch.pz.db.DatabaseManager;
 import pirch.pz.service.AccountService;
+import pirch.pz.service.PlayerIdentity;
+import pirch.pz.service.PlayerIdentityService;
+import pirch.pzloader.runtime.BridgeMethodDefinition;
 import pirch.pzloader.runtime.BridgeResult;
 import pirch.pzloader.runtime.ModuleRegistry;
 
 public final class SystemBridge {
-    private static final String BRIDGE_VERSION = "PirchsPZBridge v0";
+    private static final String BRIDGE_VERSION = "PirchsPZBridge v0.0.2";
 
     private SystemBridge() {
     }
 
     public static void register() {
-        ModuleRegistry.register("pz.bridge.system.ping", (args) -> BridgeResult.ok("pong"));
-        ModuleRegistry.register("pz.bridge.system.version", (args) -> BridgeResult.ok(BRIDGE_VERSION));
-        ModuleRegistry.register("pz.bridge.system.healthCheck", (args) -> healthCheck());
-        ModuleRegistry.register("pz.bridge.system.selfTest", (args) -> selfTest());
-        ModuleRegistry.register("pz.bridge.system.dbPing", (args) -> dbPing());
-        ModuleRegistry.register("pz.bridge.system.resolveAccount", (args) -> resolveAccount(args));
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.system.ping")
+                .description("Simple bridge heartbeat endpoint")
+                .build(),
+            args -> BridgeResult.ok("pong")
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.system.version")
+                .description("Returns bridge version information")
+                .build(),
+            args -> BridgeResult.ok(BRIDGE_VERSION)
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.system.healthCheck")
+                .description("Returns bridge runtime health summary")
+                .build(),
+            args -> healthCheck()
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.system.listMethods")
+                .description("Lists registered bridge methods and metadata")
+                .build(),
+            args -> listMethods()
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.system.dbPing")
+                .description("Tests database connectivity")
+                .build(),
+            args -> dbPing()
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.system.resolveAccount")
+                .description("Resolves or creates an account using a structured player identity or legacy external id")
+                .minArgCount(1)
+                .build(),
+            SystemBridge::resolveAccount
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.player.resolveIdentity")
+                .description("Normalizes a structured java-side player identity payload into a canonical form")
+                .minArgCount(1)
+                .build(),
+            SystemBridge::resolvePlayerIdentity
+        );
     }
 
     private static BridgeResult healthCheck() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("bridgeVersion", BRIDGE_VERSION);
         data.put("registeredMethodCount", ModuleRegistry.count());
-        data.put("hasPing", ModuleRegistry.has("pz.bridge.system.ping"));
-        data.put("hasVersion", ModuleRegistry.has("pz.bridge.system.version"));
-        data.put("hasHealthCheck", ModuleRegistry.has("pz.bridge.system.healthCheck"));
-        data.put("hasSelfTest", ModuleRegistry.has("pz.bridge.system.selfTest"));
         data.put("hasDbPing", ModuleRegistry.has("pz.bridge.system.dbPing"));
         data.put("hasResolveAccount", ModuleRegistry.has("pz.bridge.system.resolveAccount"));
+        data.put("hasResolvePlayerIdentity", ModuleRegistry.has("pz.bridge.player.resolveIdentity"));
         data.put("hasGetBalance", ModuleRegistry.has("pz.bridge.bank.getBalance"));
         return BridgeResult.ok(data);
     }
 
-    private static BridgeResult selfTest() {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("systemPingRegistered", ModuleRegistry.has("pz.bridge.system.ping"));
-        data.put("systemVersionRegistered", ModuleRegistry.has("pz.bridge.system.version"));
-        data.put("dbPingRegistered", ModuleRegistry.has("pz.bridge.system.dbPing"));
-        data.put("resolveAccountRegistered", ModuleRegistry.has("pz.bridge.system.resolveAccount"));
-        data.put("bankGetBalanceRegistered", ModuleRegistry.has("pz.bridge.bank.getBalance"));
-
-        boolean passed =
-            ModuleRegistry.has("pz.bridge.system.ping")
-                && ModuleRegistry.has("pz.bridge.system.version")
-                && ModuleRegistry.has("pz.bridge.system.dbPing")
-                && ModuleRegistry.has("pz.bridge.system.resolveAccount")
-                && ModuleRegistry.has("pz.bridge.bank.getBalance");
-
-        data.put("passed", passed);
-
-        if (!passed) {
-            return BridgeResult.fail("One or more required bridge methods are not registered");
-        }
-
-        return BridgeResult.ok(data);
+    private static BridgeResult listMethods() {
+        var methods = ModuleRegistry.getAllDefinitions().values().stream()
+            .map(definition -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("methodName", definition.getMethodName());
+                row.put("version", definition.getVersion());
+                row.put("minArgCount", definition.getMinArgCount());
+                row.put("description", definition.getDescription());
+                return row;
+            })
+            .collect(Collectors.toList());
+        return BridgeResult.ok(methods);
     }
 
     private static BridgeResult dbPing() {
@@ -69,32 +104,34 @@ public final class SystemBridge {
     }
 
     private static BridgeResult resolveAccount(Object... args) {
-        if (args == null || args.length < 1 || args[0] == null) {
-            return BridgeResult.fail("Missing externalId");
-        }
-
-        String externalId = String.valueOf(args[0]).trim();
-        if (externalId.isEmpty()) {
-            return BridgeResult.fail("externalId cannot be empty");
-        }
-
-        String accountName = externalId;
-        if (args.length >= 2 && args[1] != null) {
-            String providedName = String.valueOf(args[1]).trim();
-            if (!providedName.isEmpty()) {
-                accountName = providedName;
-            }
-        }
-
         try {
-            int accountId = AccountService.resolveOrCreateAccount(externalId, accountName);
+            PlayerIdentity identity;
+            if (args.length >= 2 && !(args[0] instanceof Map) && !(args[0] instanceof PlayerIdentity)) {
+                identity = PlayerIdentity.builder()
+                    .playerSource("legacy")
+                    .sourcePlayerId(String.valueOf(args[0]).trim())
+                    .username(String.valueOf(args[0]).trim())
+                    .displayName(args[1] == null ? null : String.valueOf(args[1]).trim())
+                    .build();
+            } else {
+                identity = PlayerIdentityService.fromBridgeArg(args[0]);
+            }
 
+            int accountId = AccountService.resolveOrCreateAccount(identity);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("accountId", accountId);
-            data.put("externalId", externalId);
-            data.put("accountName", accountName);
-
+            data.putAll(identity.toMap());
+            data.put("accountName", identity.getPreferredAccountName());
             return BridgeResult.ok(data);
+        } catch (Exception e) {
+            return BridgeResult.fail(e.getMessage());
+        }
+    }
+
+    private static BridgeResult resolvePlayerIdentity(Object... args) {
+        try {
+            PlayerIdentity identity = PlayerIdentityService.fromBridgeArg(args[0]);
+            return BridgeResult.ok(identity.toMap());
         } catch (Exception e) {
             return BridgeResult.fail(e.getMessage());
         }

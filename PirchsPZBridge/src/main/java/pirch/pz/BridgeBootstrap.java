@@ -1,11 +1,14 @@
 package pirch.pz;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import pirch.pz.bridge.BankBridge;
 import pirch.pz.bridge.SystemBridge;
 import pirch.pz.db.SchemaManager;
+import pirch.pz.debug.IdentityDiscoveryWatcher;
+import pirch.pz.debug.IdentityLifecycleBridge;
 import pirch.pzloader.bootstrap.LoaderBootstrap;
-import pirch.pzloader.runtime.BridgeResult;
-import pirch.pzloader.runtime.InvocationDispatcher;
+import pirch.pzloader.runtime.ModuleRegistry;
 import pirch.pzloader.util.LoaderLog;
 
 public final class BridgeBootstrap {
@@ -20,31 +23,28 @@ public final class BridgeBootstrap {
             return;
         }
 
-        LoaderBootstrap.initialize();
-        SchemaManager.initialize();
-        SystemBridge.register();
-        BankBridge.register();
+        try {
+            LoaderBootstrap.initialize();
+            SchemaManager.initialize();
 
-        initialized = true;
-        LoaderLog.info("PirchsPZBridge initialization complete.");
+            SystemBridge.register();
+            BankBridge.register();
 
-        BridgeResult pingResult = InvocationDispatcher.invoke("pz.bridge.system.ping");
-        LoaderLog.info("Ping result: " + pingResult);
+            initialized = true;
 
-        BridgeResult dbPingResult = InvocationDispatcher.invoke("pz.bridge.system.dbPing");
-        LoaderLog.info("DB ping result: " + dbPingResult);
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("registeredMethodCount", ModuleRegistry.count());
+            summary.put("registeredMethods", ModuleRegistry.getAllDefinitions().keySet());
 
-        BridgeResult accountResult = InvocationDispatcher.invoke(
-            "pz.bridge.system.resolveAccount",
-            "testPlayer",
-            "Test Player"
-        );
-        LoaderLog.info("Resolve account result: " + accountResult);
-
-        BridgeResult depositResult = InvocationDispatcher.invoke("pz.bridge.bank.deposit", "testPlayer", 50);
-        LoaderLog.info("Deposit result: " + depositResult);
-
-        BridgeResult balanceResult = InvocationDispatcher.invoke("pz.bridge.bank.getBalance", "testPlayer");
-        LoaderLog.info("Balance result: " + balanceResult);
+            LoaderLog.info("PirchsPZBridge initialization complete: " + summary);
+            LoaderLog.info("[PZLIFE][IDENTITY] Java-side identity discovery armed.");
+            LoaderLog.info("[PZLIFE][IDENTITY] Goal: resolve a stable account/character identity from IsoPlayer and stop.");
+            IdentityLifecycleBridge.markReady();
+            IdentityDiscoveryWatcher.start();
+        } catch (Exception e) {
+            LoaderLog.error("PirchsPZBridge initialization failed: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("PirchsPZBridge failed to initialize.", e);
+        }
     }
 }
