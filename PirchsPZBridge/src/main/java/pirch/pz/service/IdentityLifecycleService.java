@@ -8,6 +8,7 @@ public final class IdentityLifecycleService {
     private static volatile String lastResolvedAccountExternalId = null;
     private static volatile Integer lastResolvedAccountId = null;
     private static volatile PlayerIdentity lastIdentity = null;
+    private static volatile Integer lastResolvedPlayerNum = null;
 
     private IdentityLifecycleService() {
     }
@@ -16,15 +17,35 @@ public final class IdentityLifecycleService {
         ready = true;
     }
 
+    public static synchronized void markNotReady() {
+        ready = false;
+    }
+
     public static synchronized void resetLocalResolution() {
+        resetLocalResolution("manual reset");
+    }
+
+    public static synchronized void resetLocalResolution(String reason) {
+        if (PzRuntimeConfig.isVerboseIdentityLoggingEnabled() && hasResolvedLocalAccount()) {
+            LoaderLog.info(
+                "[PZLIFE][IDENTITY] resetting local lifecycle state. reason=" + reason
+                    + ", lastAccountId=" + lastResolvedAccountId
+                    + ", lastAccountExternalId=" + lastResolvedAccountExternalId
+            );
+        }
         lastResolvedAccountExternalId = null;
         lastResolvedAccountId = null;
         lastIdentity = null;
+        lastResolvedPlayerNum = null;
     }
 
     public static synchronized void resetAll() {
-        ready = false;
-        resetLocalResolution();
+        resetAll("manual full reset");
+    }
+
+    public static synchronized void resetAll(String reason) {
+        markNotReady();
+        resetLocalResolution(reason);
     }
 
     public static boolean isReady() {
@@ -41,6 +62,10 @@ public final class IdentityLifecycleService {
 
     public static Integer getLastResolvedAccountId() {
         return lastResolvedAccountId;
+    }
+
+    public static Integer getLastResolvedPlayerNum() {
+        return lastResolvedPlayerNum;
     }
 
     public static PlayerIdentity getLastIdentity() {
@@ -73,6 +98,7 @@ public final class IdentityLifecycleService {
                 LoaderLog.info("[PZLIFE][IDENTITY] duplicate lifecycle resolution ignored for " + accountExternalId);
             }
             lastIdentity = identity;
+            lastResolvedPlayerNum = playerNum;
             return identity;
         }
 
@@ -80,10 +106,13 @@ public final class IdentityLifecycleService {
         lastResolvedAccountExternalId = accountExternalId;
         lastResolvedAccountId = accountId;
         lastIdentity = identity;
+        lastResolvedPlayerNum = playerNum;
 
-        LoaderLog.info("[PZLIFE][IDENTITY] resolved account from lifecycle. playerNum="
-            + playerNum + ", accountId=" + accountId + ", accountExternalId=" + accountExternalId);
-
+        LoaderLog.info(
+            "[PZLIFE][IDENTITY] resolved account from lifecycle. playerNum=" + playerNum
+                + ", accountId=" + accountId
+                + ", accountExternalId=" + accountExternalId
+        );
         return identity;
     }
 }
