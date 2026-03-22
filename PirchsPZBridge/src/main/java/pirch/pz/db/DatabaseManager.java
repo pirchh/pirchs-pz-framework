@@ -12,16 +12,11 @@ public final class DatabaseManager {
         if (!DatabaseConfig.isEnabled()) {
             throw new IllegalStateException("Database is disabled in pirchdb.properties");
         }
-
         try {
             Class.forName("org.postgresql.Driver");
         } catch (ClassNotFoundException e) {
-            throw new IllegalStateException(
-                "PostgreSQL JDBC driver not found on runtime classpath",
-                e
-            );
+            throw new IllegalStateException("PostgreSQL JDBC driver not found on runtime classpath", e);
         }
-
         return DriverManager.getConnection(
             DatabaseConfig.getJdbcUrl(),
             DatabaseConfig.getUser(),

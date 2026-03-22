@@ -1,9 +1,8 @@
 CREATE TABLE IF NOT EXISTS economy.transactions (
-    transaction_id SERIAL PRIMARY KEY,
-    account_id INTEGER NOT NULL,
+    transaction_id BIGSERIAL PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts.account(account_id) ON DELETE CASCADE,
     type TEXT NOT NULL,
     amount INTEGER NOT NULL,
     balance_after INTEGER NOT NULL,
-    note TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

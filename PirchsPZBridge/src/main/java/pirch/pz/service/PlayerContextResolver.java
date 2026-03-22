@@ -5,13 +5,11 @@ import java.util.List;
 import zombie.characters.IsoPlayer;
 
 public final class PlayerContextResolver {
-
     public IsoPlayer resolveLocalPlayer() {
         IsoPlayer player = tryResolveAnyPlayer();
         if (player != null) {
             return player;
         }
-
         throw new IllegalStateException("No local IsoPlayer is available yet.");
     }
 
@@ -20,7 +18,6 @@ public final class PlayerContextResolver {
         if (player != null) {
             return player;
         }
-
         throw new IllegalStateException("No IsoPlayer found for onlineId=" + onlineId);
     }
 
@@ -47,7 +44,6 @@ public final class PlayerContextResolver {
                     return entry;
                 }
             }
-
             for (IsoPlayer entry : players) {
                 if (entry != null) {
                     return entry;
@@ -66,6 +62,7 @@ public final class PlayerContextResolver {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private List<IsoPlayer> tryGetPlayers() {
         try {
             ArrayList<IsoPlayer> players = IsoPlayer.getPlayers();

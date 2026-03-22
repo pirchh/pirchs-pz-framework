@@ -1,6 +1,5 @@
 CREATE TABLE IF NOT EXISTS economy.wallet (
-    wallet_id SERIAL PRIMARY KEY,
-    account_id INTEGER NOT NULL UNIQUE,
+    account_id INTEGER PRIMARY KEY REFERENCES accounts.account(account_id) ON DELETE CASCADE,
     balance INTEGER NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

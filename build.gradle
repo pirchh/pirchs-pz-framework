@@ -2,7 +2,7 @@ subprojects {
     apply plugin: 'java'
 
     group = 'pirch'
-    version = '0.0.2'
+    version = '0.0.3'
 
     repositories {
         mavenCentral()
@@ -10,22 +10,92 @@ subprojects {
 
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(25)
+            languageVersion = JavaLanguageVersion.of(
+                Integer.parseInt(findProperty('pzJavaVersion')?.toString()
+                    ?: System.getenv('PZ_JAVA_VERSION')
+                    ?: '25')
+            )
+        }
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+    }
+}
+
+def loadLocalDevProperties() {
+    def localDev = file("${rootProject.projectDir}/local.dev.properties")
+    if (localDev.exists()) {
+        def props = new Properties()
+        localDev.withInputStream { props.load(it) }
+        props.each { key, value ->
+            if (!project.hasProperty(key.toString())) {
+                project.ext.set(key.toString(), value)
+            }
         }
     }
 }
 
-def resolveModLibDir() {
-    if (project.hasProperty('pzModLibDir')) {
-        return file(project.property('pzModLibDir'))
+loadLocalDevProperties()
+
+def resolveProperty(String propertyName, String envName, String fallback = null) {
+    if (project.hasProperty(propertyName)) {
+        def value = String.valueOf(project.property(propertyName)).trim()
+        if (!value.isBlank()) {
+            return value
+        }
     }
 
-    def envValue = System.getenv('PIRCHS_PZ_MOD_LIB')
+    def envValue = System.getenv(envName)
     if (envValue != null && !envValue.isBlank()) {
-        return file(envValue)
+        return envValue.trim()
     }
 
-    return file('C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib')
+    return fallback
+}
+
+def defaultPzGameDir() {
+    return 'C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid'
+}
+
+def defaultModLibDir() {
+    return 'C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib'
+}
+
+def resolveModLibDir() {
+    def configured = resolveProperty('pzModLibDir', 'PIRCHS_PZ_MOD_LIB', defaultModLibDir())
+    if (configured != null && !configured.isBlank()) {
+        return file(configured)
+    }
+    return file("${rootProject.projectDir}/build/install/mod-lib")
+}
+
+tasks.register('verifyEnv') {
+    doLast {
+        def pzLibDir = resolveProperty('pzLibDir', 'PZ_LIB_DIR',
+            resolveProperty('pzGameDir', 'PZ_GAME_DIR', defaultPzGameDir()))
+        def modLibDir = resolveProperty('pzModLibDir', 'PIRCHS_PZ_MOD_LIB', defaultModLibDir())
+
+        println '== Pirchs PZ DBI environment check =='
+        println "Java toolchain target: ${subprojects.first().java.toolchain.languageVersion.get()}"
+        println "Project Zomboid dir: ${pzLibDir ?: '(not set)'}"
+        println "Mod lib dir: ${modLibDir ?: '(not set, installToMod will use build/install/mod-lib)'}"
+
+        if (pzLibDir == null) {
+            println ''
+            println 'Project Zomboid compile path is not configured.'
+            println 'Set one of:'
+            println '  -PpzLibDir="C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid"'
+            println '  PZ_LIB_DIR=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid'
+            println '  PZ_GAME_DIR=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid'
+        } else {
+            println "PZ compile path exists: ${file(pzLibDir).exists()}"
+        }
+
+        if (modLibDir != null) {
+            println "Configured mod lib exists: ${file(modLibDir).exists()}"
+        }
+    }
 }
 
 tasks.register('installToMod') {
@@ -39,17 +109,14 @@ tasks.register('installToMod') {
             from project(':PirchsPZLoader').tasks.jar.archiveFile
             into modLib
         }
-
         copy {
             from project(':PirchsPZBridge').tasks.jar.archiveFile
             into modLib
         }
-
         copy {
             from project(':PirchsPZAgent').tasks.jar.archiveFile
             into modLib
         }
-
         copy {
             from project(':PirchsPZBridge').configurations.runtimeClasspath
             into modLib
