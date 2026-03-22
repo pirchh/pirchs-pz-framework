@@ -2,9 +2,52 @@ plugins {
     id 'java-library'
 }
 
+def resolvePzLibDir() {
+    if (project.hasProperty('pzLibDir')) {
+        return file(project.property('pzLibDir'))
+    }
+
+    def envValue = System.getenv('PZ_LIB_DIR')
+    if (envValue != null && !envValue.isBlank()) {
+        return file(envValue)
+    }
+
+    def gameDirValue = System.getenv('PZ_GAME_DIR')
+    if (gameDirValue != null && !gameDirValue.isBlank()) {
+        return file(gameDirValue)
+    }
+
+    return file('C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid')
+}
+
+def pzLibDir = resolvePzLibDir()
+
 dependencies {
     implementation project(':PirchsPZLoader')
     implementation 'org.postgresql:postgresql:42.7.3'
+
+    if (pzLibDir.exists()) {
+        compileOnly files("${pzLibDir}/projectzomboid.jar")
+        compileOnly fileTree(dir: pzLibDir, include: ['*.jar'])
+    }
+}
+
+tasks.register('printPzCompileClasspath') {
+    doLast {
+        println "PZ lib dir: ${pzLibDir.absolutePath}"
+        println "PZ lib dir exists: ${pzLibDir.exists()}"
+
+        if (pzLibDir.exists()) {
+            println "PZ jars:"
+            fileTree(dir: pzLibDir, include: ['*.jar']).files.each { println " - ${it.name}" }
+        } else {
+            println "Project Zomboid lib path not found."
+            println "Set one of these before build:"
+            println " -PpzLibDir=\"C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid\""
+            println " PZ_LIB_DIR=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid"
+            println " PZ_GAME_DIR=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid"
+        }
+    }
 }
 
 jar {

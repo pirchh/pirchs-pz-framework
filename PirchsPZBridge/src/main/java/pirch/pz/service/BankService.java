@@ -7,23 +7,29 @@ public final class BankService {
     }
 
     public static int getBalance(String playerId) {
-        validatePlayerId(playerId);
-        return PostgresAccountRepository.getBalance(playerId);
+        return getBalance(PlayerIdentity.legacy(playerId));
+    }
+
+    public static int getBalance(PlayerIdentity identity) {
+        PlayerIdentityService.validate(identity);
+        return PostgresAccountRepository.getBalance(identity);
     }
 
     public static int deposit(String playerId, int amount) {
-        validatePlayerId(playerId);
-        return PostgresAccountRepository.deposit(playerId, amount);
+        return deposit(PlayerIdentity.legacy(playerId), amount);
+    }
+
+    public static int deposit(PlayerIdentity identity, int amount) {
+        PlayerIdentityService.validate(identity);
+        return PostgresAccountRepository.deposit(identity, amount);
     }
 
     public static int withdraw(String playerId, int amount) {
-        validatePlayerId(playerId);
-        return PostgresAccountRepository.withdraw(playerId, amount);
+        return withdraw(PlayerIdentity.legacy(playerId), amount);
     }
 
-    private static void validatePlayerId(String playerId) {
-        if (playerId == null || playerId.isBlank()) {
-            throw new IllegalArgumentException("playerId cannot be null or blank");
-        }
+    public static int withdraw(PlayerIdentity identity, int amount) {
+        PlayerIdentityService.validate(identity);
+        return PostgresAccountRepository.withdraw(identity, amount);
     }
 }

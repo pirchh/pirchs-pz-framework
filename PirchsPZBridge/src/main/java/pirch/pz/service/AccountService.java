@@ -11,6 +11,13 @@ public final class AccountService {
         return PostgresAccountRepository.resolveOrCreateAccount(externalId, accountName);
     }
 
+    public static int resolveOrCreateAccount(PlayerIdentity identity) {
+        if (identity == null) {
+            throw new IllegalArgumentException("identity cannot be null");
+        }
+        return PostgresAccountRepository.resolveOrCreateAccount(identity);
+    }
+
     private static void validateExternalId(String externalId) {
         if (externalId == null || externalId.isBlank()) {
             throw new IllegalArgumentException("externalId cannot be null or blank");

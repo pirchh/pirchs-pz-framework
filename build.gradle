@@ -2,7 +2,7 @@ subprojects {
     apply plugin: 'java'
 
     group = 'pirch'
-    version = '0.0.1'
+    version = '0.0.2'
 
     repositories {
         mavenCentral()
@@ -10,16 +10,30 @@ subprojects {
 
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(17)
+            languageVersion = JavaLanguageVersion.of(25)
         }
     }
 }
 
+def resolveModLibDir() {
+    if (project.hasProperty('pzModLibDir')) {
+        return file(project.property('pzModLibDir'))
+    }
+
+    def envValue = System.getenv('PIRCHS_PZ_MOD_LIB')
+    if (envValue != null && !envValue.isBlank()) {
+        return file(envValue)
+    }
+
+    return file('C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib')
+}
+
 tasks.register('installToMod') {
-    dependsOn ':PirchsPZLoader:jar', ':PirchsPZBridge:jar'
+    dependsOn ':PirchsPZLoader:jar', ':PirchsPZBridge:jar', ':PirchsPZAgent:jar'
 
     doLast {
-        def modLib = file("C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib")
+        def modLib = resolveModLibDir()
+        modLib.mkdirs()
 
         copy {
             from project(':PirchsPZLoader').tasks.jar.archiveFile
@@ -32,11 +46,16 @@ tasks.register('installToMod') {
         }
 
         copy {
+            from project(':PirchsPZAgent').tasks.jar.archiveFile
+            into modLib
+        }
+
+        copy {
             from project(':PirchsPZBridge').configurations.runtimeClasspath
             into modLib
             include 'postgresql-*.jar'
         }
 
-        println "Jars copied to PZ mod folder."
+        println "Jars copied to PZ mod folder: ${modLib.absolutePath}"
     }
 }
