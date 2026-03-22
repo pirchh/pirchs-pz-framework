@@ -5,7 +5,6 @@ import zombie.characters.IsoPlayer;
 import zombie.core.znet.SteamUser;
 
 public final class PzPlayerIdentityAdapter {
-
     public PlayerIdentity fromIsoPlayer(IsoPlayer player) {
         if (player == null) {
             throw new IllegalArgumentException("IsoPlayer is null");
@@ -13,10 +12,8 @@ public final class PzPlayerIdentityAdapter {
 
         String steamId = resolveSteamId(player);
         String onlineId = safeOnlineId(player);
-
         String username = normalize(player.getUsername());
         String displayName = normalize(player.getDisplayName());
-
         String characterForename = extractCharacterForename(player);
         String characterSurname = extractCharacterSurname(player);
         String characterFullName = buildCharacterFullName(characterForename, characterSurname);
@@ -47,12 +44,10 @@ public final class PzPlayerIdentityAdapter {
         if (fromPlayer != null) {
             return fromPlayer;
         }
-
         String fromSteamUser = safeSteamUserId();
         if (fromSteamUser != null) {
             return fromSteamUser;
         }
-
         return null;
     }
 
@@ -117,7 +112,6 @@ public final class PzPlayerIdentityAdapter {
                 return value;
             }
         }
-
         return firstNonBlank(
             invokeStringNoArgs(player, "getForename"),
             invokeStringNoArgs(player, "getFirstName")
@@ -135,7 +129,6 @@ public final class PzPlayerIdentityAdapter {
                 return value;
             }
         }
-
         return firstNonBlank(
             invokeStringNoArgs(player, "getSurname"),
             invokeStringNoArgs(player, "getLastName")
@@ -168,14 +161,12 @@ public final class PzPlayerIdentityAdapter {
         if (values == null) {
             return null;
         }
-
         for (String value : values) {
             String normalized = normalize(value);
             if (normalized != null) {
                 return normalized;
             }
         }
-
         return null;
     }
 
@@ -183,7 +174,6 @@ public final class PzPlayerIdentityAdapter {
         if (value == null) {
             return null;
         }
-
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }

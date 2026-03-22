@@ -10,11 +10,9 @@ public final class DatabaseConfig {
         try (InputStream inputStream = DatabaseConfig.class
             .getClassLoader()
             .getResourceAsStream("pirchdb.properties")) {
-
             if (inputStream == null) {
                 throw new IllegalStateException("pirchdb.properties not found");
             }
-
             PROPERTIES.load(inputStream);
         } catch (Exception e) {
             throw new RuntimeException("Failed to load pirchdb.properties", e);
@@ -65,7 +63,6 @@ public final class DatabaseConfig {
             "pirchdb.schema.locations",
             "sql/accounts,sql/economy,sql/ownership,sql/permissions"
         );
-
         return raw.split(",");
     }
 
@@ -74,18 +71,10 @@ public final class DatabaseConfig {
         if (!overrideUrl.isEmpty()) {
             return overrideUrl;
         }
-
         if (!"postgres".equalsIgnoreCase(getType())) {
             throw new IllegalStateException("Unsupported database type: " + getType());
         }
-
-        return "jdbc:postgresql://"
-            + getHost()
-            + ":"
-            + getPort()
-            + "/"
-            + getDatabaseName()
-            + "?ssl="
-            + isSslEnabled();
+        return "jdbc:postgresql://" + getHost() + ":" + getPort() + "/" + getDatabaseName()
+            + "?ssl=" + isSslEnabled();
     }
 }

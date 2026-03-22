@@ -1,0 +1,5 @@
+# Copy this to gradle.properties or local.dev.properties and adjust to your machine.
+
+pzJavaVersion=21
+# pzLibDir=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid
+# pzModLibDir=C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib

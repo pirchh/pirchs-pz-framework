@@ -1,7 +1,9 @@
 package pirch.pz.service;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 public final class PlayerIdentity {
     private final String playerSource;
@@ -13,6 +15,8 @@ public final class PlayerIdentity {
     private final String characterForename;
     private final String characterSurname;
     private final String characterFullName;
+    private final String accountExternalId;
+    private final String characterExternalId;
 
     private PlayerIdentity(Builder builder) {
         this.playerSource = normalize(builder.playerSource);
@@ -24,6 +28,8 @@ public final class PlayerIdentity {
         this.characterForename = normalize(builder.characterForename);
         this.characterSurname = normalize(builder.characterSurname);
         this.characterFullName = normalize(builder.characterFullName);
+        this.accountExternalId = buildAccountExternalId();
+        this.characterExternalId = buildCharacterExternalId();
     }
 
     public static Builder builder() {
@@ -75,37 +81,33 @@ public final class PlayerIdentity {
         return characterFullName;
     }
 
+    public String getAccountExternalId() {
+        return accountExternalId;
+    }
+
+    public String getCharacterExternalId() {
+        return characterExternalId;
+    }
+
     public String getCanonicalExternalId() {
-        if (steamId != null && !steamId.isBlank()) {
-            return steamId;
-        }
-        if (username != null && !username.isBlank()) {
-            return "user:" + username;
-        }
-        if (onlineId != null && !onlineId.isBlank()) {
-            return "online:" + onlineId;
-        }
-        if (playerSource != null && sourcePlayerId != null) {
-            return playerSource + ":" + sourcePlayerId;
-        }
-        throw new IllegalStateException("PlayerIdentity must contain at least one usable identifier");
+        return accountExternalId;
     }
 
     public String getPreferredAccountName() {
-        if (displayName != null && !displayName.isBlank()) {
+        if (displayName != null) {
             return displayName;
         }
-        if (username != null && !username.isBlank()) {
+        if (username != null) {
             return username;
         }
-        return getCanonicalExternalId();
+        return accountExternalId;
     }
 
     public String getPreferredCharacterName() {
-        if (characterFullName != null && !characterFullName.isBlank()) {
+        if (characterFullName != null) {
             return characterFullName;
         }
-        if (characterForename != null && !characterForename.isBlank()) {
+        if (characterForename != null) {
             return characterForename;
         }
         return getPreferredAccountName();
@@ -122,10 +124,48 @@ public final class PlayerIdentity {
         data.put("characterForename", characterForename);
         data.put("characterSurname", characterSurname);
         data.put("characterFullName", characterFullName);
-        data.put("canonicalExternalId", getCanonicalExternalId());
+        data.put("accountExternalId", accountExternalId);
+        data.put("characterExternalId", characterExternalId);
+        data.put("canonicalExternalId", accountExternalId);
         data.put("preferredAccountName", getPreferredAccountName());
         data.put("preferredCharacterName", getPreferredCharacterName());
         return data;
+    }
+
+    private String buildAccountExternalId() {
+        if (steamId != null) {
+            return "steam:" + steamId;
+        }
+        if (username != null) {
+            return "user:" + username.toLowerCase(Locale.ROOT);
+        }
+        if (onlineId != null) {
+            return "online:" + onlineId;
+        }
+        if (playerSource != null && sourcePlayerId != null) {
+            return playerSource + ":" + sourcePlayerId;
+        }
+        throw new IllegalStateException("PlayerIdentity must contain at least one usable identifier");
+    }
+
+    private String buildCharacterExternalId() {
+        String characterName = slugify(getPreferredCharacterName());
+        if (characterName == null) {
+            return accountExternalId;
+        }
+        return accountExternalId + "#char:" + characterName;
+    }
+
+    private static String slugify(String value) {
+        String normalized = normalize(value);
+        if (normalized == null) {
+            return null;
+        }
+        String slug = normalized
+            .toLowerCase(Locale.ROOT)
+            .replaceAll("[^a-z0-9]+", "-")
+            .replaceAll("(^-+|-+$)", "");
+        return slug.isBlank() ? null : slug;
     }
 
     private static String normalize(String value) {
@@ -134,6 +174,20 @@ public final class PlayerIdentity {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof PlayerIdentity other)) {
+            return false;
+        }
+        return Objects.equals(accountExternalId, other.accountExternalId)
+            && Objects.equals(characterExternalId, other.characterExternalId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(accountExternalId, characterExternalId);
     }
 
     public static final class Builder {

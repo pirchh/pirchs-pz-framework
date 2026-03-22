@@ -7,7 +7,6 @@ import pirch.pzloader.util.LoaderLog;
 public final class IdentityTestHook {
     private static final long POLL_INTERVAL_MS = 2000L;
     private static final int MAX_ATTEMPTS = 60;
-
     private static volatile boolean started = false;
     private static volatile boolean resolved = false;
 
@@ -21,9 +20,8 @@ public final class IdentityTestHook {
         }
 
         started = true;
-
         LoaderLog.info("[PZLIFE][IDENTITY] Starting identity polling. intervalMs="
-                + POLL_INTERVAL_MS + ", maxAttempts=" + MAX_ATTEMPTS);
+            + POLL_INTERVAL_MS + ", maxAttempts=" + MAX_ATTEMPTS);
 
         Thread thread = new Thread(() -> {
             for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -39,7 +37,7 @@ public final class IdentityTestHook {
                     return;
                 } catch (Exception e) {
                     LoaderLog.info("[PZLIFE][IDENTITY][attempt=" + attempt + "/" + MAX_ATTEMPTS
-                            + "] no player resolved yet: " + e.getMessage());
+                        + "] no player resolved yet: " + e.getMessage());
                 }
 
                 try {
@@ -65,6 +63,7 @@ public final class IdentityTestHook {
         LoaderLog.info("[PZLIFE][IDENTITY] steamId=" + identity.getSteamId());
         LoaderLog.info("[PZLIFE][IDENTITY] username=" + identity.getUsername());
         LoaderLog.info("[PZLIFE][IDENTITY] displayName=" + identity.getDisplayName());
-        LoaderLog.info("[PZLIFE][IDENTITY] canonicalExternalId=" + identity.getCanonicalExternalId());
+        LoaderLog.info("[PZLIFE][IDENTITY] accountExternalId=" + identity.getAccountExternalId());
+        LoaderLog.info("[PZLIFE][IDENTITY] characterExternalId=" + identity.getCharacterExternalId());
     }
 }

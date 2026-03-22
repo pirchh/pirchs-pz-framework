@@ -3,6 +3,8 @@ package pirch.pz;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import pirch.pz.bridge.BankBridge;
+import pirch.pz.bridge.OwnershipBridge;
+import pirch.pz.bridge.PermissionBridge;
 import pirch.pz.bridge.SystemBridge;
 import pirch.pz.db.SchemaManager;
 import pirch.pz.debug.IdentityDiscoveryWatcher;
@@ -29,6 +31,8 @@ public final class BridgeBootstrap {
 
             SystemBridge.register();
             BankBridge.register();
+            OwnershipBridge.register();
+            PermissionBridge.register();
 
             initialized = true;
 
@@ -37,8 +41,10 @@ public final class BridgeBootstrap {
             summary.put("registeredMethods", ModuleRegistry.getAllDefinitions().keySet());
 
             LoaderLog.info("PirchsPZBridge initialization complete: " + summary);
-            LoaderLog.info("[PZLIFE][IDENTITY] Java-side identity discovery armed.");
-            LoaderLog.info("[PZLIFE][IDENTITY] Goal: resolve a stable account/character identity from IsoPlayer and stop.");
+            LoaderLog.info("[PZLIFE][IDENTITY] Java-side identity detector armed.");
+            LoaderLog.info("[PZLIFE][IDENTITY] Goal: resolve a stable account identity first, character identity second.");
+            LoaderLog.info("[PZLIFE][IDENTITY] Strategy: low-frequency Java detection that stops permanently once resolved.");
+
             IdentityLifecycleBridge.markReady();
             IdentityDiscoveryWatcher.start();
         } catch (Exception e) {

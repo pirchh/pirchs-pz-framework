@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import pirch.pz.db.DatabaseManager;
 import pirch.pz.service.AccountService;
+import pirch.pz.service.IdentityLifecycleService;
 import pirch.pz.service.PlayerIdentity;
 import pirch.pz.service.PlayerIdentityService;
 import pirch.pzloader.runtime.BridgeMethodDefinition;
@@ -12,7 +13,7 @@ import pirch.pzloader.runtime.BridgeResult;
 import pirch.pzloader.runtime.ModuleRegistry;
 
 public final class SystemBridge {
-    private static final String BRIDGE_VERSION = "PirchsPZBridge v0.0.2";
+    private static final String BRIDGE_VERSION = "PirchsPZBridge v0.0.3";
 
     private SystemBridge() {
     }
@@ -68,6 +69,13 @@ public final class SystemBridge {
                 .build(),
             SystemBridge::resolvePlayerIdentity
         );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.player.getLifecycleState")
+                .description("Returns current identity lifecycle state")
+                .build(),
+            args -> BridgeResult.ok(IdentityLifecycleService.snapshot().toMap())
+        );
     }
 
     private static BridgeResult healthCheck() {
@@ -77,7 +85,9 @@ public final class SystemBridge {
         data.put("hasDbPing", ModuleRegistry.has("pz.bridge.system.dbPing"));
         data.put("hasResolveAccount", ModuleRegistry.has("pz.bridge.system.resolveAccount"));
         data.put("hasResolvePlayerIdentity", ModuleRegistry.has("pz.bridge.player.resolveIdentity"));
-        data.put("hasGetBalance", ModuleRegistry.has("pz.bridge.bank.getBalance"));
+        data.put("hasOwnershipClaim", ModuleRegistry.has("pz.bridge.ownership.claimNode"));
+        data.put("hasPermissionGrant", ModuleRegistry.has("pz.bridge.permissions.grant"));
+        data.put("lifecycle", IdentityLifecycleService.snapshot().toMap());
         return BridgeResult.ok(data);
     }
 
@@ -92,6 +102,7 @@ public final class SystemBridge {
                 return row;
             })
             .collect(Collectors.toList());
+
         return BridgeResult.ok(methods);
     }
 
