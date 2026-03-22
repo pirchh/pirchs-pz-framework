@@ -3,10 +3,7 @@ package pirch.pz.debug;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import pirch.pz.service.IdentityLifecycleService;
 import pirch.pz.service.PlayerContextResolver;
 import pirch.pz.service.PzRuntimeConfig;
@@ -14,141 +11,152 @@ import pirch.pzloader.util.LoaderLog;
 import zombie.characters.IsoPlayer;
 
 public final class IdentityDiscoveryWatcher {
-    private static final AtomicBoolean STARTED = new AtomicBoolean(false);
-    private static final AtomicInteger ATTEMPT_COUNTER = new AtomicInteger(0);
-    private static volatile ScheduledExecutorService scheduler;
+    private static volatile boolean started = false;
+    private static volatile ScheduledExecutorService executor;
+    private static volatile int attemptCounter = 0;
+    private static volatile int emptyChecksAfterResolve = 0;
 
     private IdentityDiscoveryWatcher() {
     }
 
     public static synchronized void start() {
-        if (!PzRuntimeConfig.isIdentityWatcherEnabled()) {
-            LoaderLog.info("[PZLIFE][IDENTITY] Java-side local-player detector disabled by config.");
+        if (!PzRuntimeConfig.isIdentityDetectorEnabled()) {
+            LoaderLog.info("[PZLIFE][IDENTITY] Java-side local-player detector is disabled by config.");
+            return;
+        }
+        if (started && executor != null && !executor.isShutdown()) {
+            LoaderLog.info("[PZLIFE][IDENTITY] Java-side local-player detector already armed.");
             return;
         }
 
-        if (STARTED.get()) {
-            if (PzRuntimeConfig.isVerboseIdentityLoggingEnabled()) {
-                LoaderLog.info("[PZLIFE][IDENTITY] Java-side local-player detector already running.");
-            }
-            return;
-        }
+        long pollMs = PzRuntimeConfig.getIdentityDetectorPollMs();
+        int maxAttempts = PzRuntimeConfig.getIdentityDetectorMaxAttempts();
+        executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "pirchs-pz-identity-detector");
+            thread.setDaemon(true);
+            return thread;
+        });
+        attemptCounter = 0;
+        emptyChecksAfterResolve = 0;
+        started = true;
 
-        STARTED.set(true);
-        ATTEMPT_COUNTER.set(0);
-        scheduler = Executors.newSingleThreadScheduledExecutor(new DetectorThreadFactory());
-
-        long pollIntervalMs = PzRuntimeConfig.getIdentityWatcherPollMs();
-        int maxAttempts = PzRuntimeConfig.getIdentityWatcherMaxAttempts();
-        String maxAttemptsText = maxAttempts > 0 ? String.valueOf(maxAttempts) : "unlimited";
-
-        LoaderLog.info("[PZLIFE][IDENTITY] Starting Java-side local-player detector. intervalMs="
-            + pollIntervalMs + ", maxAttempts=" + maxAttemptsText);
-
-        scheduler.scheduleWithFixedDelay(
-            IdentityDiscoveryWatcher::tick,
-            0L,
-            pollIntervalMs,
-            TimeUnit.MILLISECONDS
+        LoaderLog.info(
+            "[PZLIFE][IDENTITY] Starting Java-side local-player detector. intervalMs=" + pollMs
+                + ", maxAttempts=" + (maxAttempts <= 0 ? "unlimited" : maxAttempts)
         );
+
+        executor.scheduleWithFixedDelay(IdentityDiscoveryWatcher::tick, 0L, pollMs, TimeUnit.MILLISECONDS);
     }
 
-    public static synchronized void stop() {
-        ScheduledExecutorService current = scheduler;
-        scheduler = null;
-        STARTED.set(false);
-        ATTEMPT_COUNTER.set(0);
-
-        if (current != null) {
-            current.shutdownNow();
+    public static synchronized void rearm(String reason) {
+        IdentityLifecycleService.resetLocalResolution(reason);
+        attemptCounter = 0;
+        emptyChecksAfterResolve = 0;
+        if (!started || executor == null || executor.isShutdown()) {
+            LoaderLog.info("[PZLIFE][IDENTITY] re-arming Java-side local-player detector. reason=" + reason);
+            start();
+            return;
         }
-    }
-
-    public static synchronized void rearm() {
-        stop();
-        IdentityLifecycleService.resetLocalResolution();
-        start();
+        LoaderLog.info("[PZLIFE][IDENTITY] detector remains armed for next session. reason=" + reason);
     }
 
     private static void tick() {
-        if (!STARTED.get()) {
+        if (!IdentityLifecycleService.isReady()) {
             return;
         }
 
-        if (!IdentityLifecycleService.isReady()) {
-            if (PzRuntimeConfig.isVerboseIdentityLoggingEnabled()) {
-                LoaderLog.info("[PZLIFE][IDENTITY][detector] lifecycle not ready yet; skipping check.");
-            }
+        PlayerContextResolver resolver = new PlayerContextResolver();
+        IsoPlayer player = null;
+        int visiblePlayers = 0;
+        try {
+            visiblePlayers = countVisiblePlayers();
+            player = resolver.tryResolveAnyPlayer();
+        } catch (Exception e) {
+            LoaderLog.info("[PZLIFE][IDENTITY][detector] tick failed before readiness: " + e.getMessage());
             return;
         }
 
         if (IdentityLifecycleService.hasResolvedLocalAccount()) {
-            String accountExternalId = IdentityLifecycleService.getLastResolvedAccountExternalId();
-            LoaderLog.info("[PZLIFE][IDENTITY] Local-player detector resolved account and is stopping. accountExternalId="
-                + accountExternalId);
-            stop();
+            monitorResolvedSession(player, visiblePlayers);
             return;
         }
 
-        int attempt = ATTEMPT_COUNTER.incrementAndGet();
-        int maxAttempts = PzRuntimeConfig.getIdentityWatcherMaxAttempts();
-        if (maxAttempts > 0 && attempt > maxAttempts) {
-            LoaderLog.info("[PZLIFE][IDENTITY] Java-side local-player detector reached maxAttempts=" + maxAttempts
-                + " without resolving a player. Stopping detector.");
-            stop();
+        attemptCounter++;
+        int maxAttempts = PzRuntimeConfig.getIdentityDetectorMaxAttempts();
+        if (shouldLogAttempt(attemptCounter, visiblePlayers)) {
+            LoaderLog.info(
+                "[PZLIFE][IDENTITY][detector] attempt=" + attemptCounter + "/"
+                    + (maxAttempts <= 0 ? "unlimited" : maxAttempts)
+                    + ", visiblePlayers=" + visiblePlayers
+            );
+        }
+
+        if (player == null) {
+            if (maxAttempts > 0 && attemptCounter >= maxAttempts) {
+                LoaderLog.info(
+                    "[PZLIFE][IDENTITY][detector] reached maxAttempts without a local player. "
+                        + "Continuing to stay armed for future session detection."
+                );
+                attemptCounter = 0;
+            }
             return;
         }
 
-        try {
-            PlayerContextResolver resolver = new PlayerContextResolver();
-            int visiblePlayers = countVisiblePlayers();
-            int logEveryAttempts = Math.max(1, PzRuntimeConfig.getIdentityWatcherLogEveryAttempts());
-            boolean shouldLogAttempt = attempt == 1 || visiblePlayers > 0 || attempt % logEveryAttempts == 0;
-
-            if (shouldLogAttempt) {
-                LoaderLog.info("[PZLIFE][IDENTITY][detector] attempt=" + attempt
-                    + formatMaxAttempts(maxAttempts) + ", visiblePlayers=" + visiblePlayers);
-            }
-
-            IsoPlayer player = resolver.tryResolveAnyPlayer();
-            if (player == null) {
-                return;
-            }
-
-            int playerNum = safePlayerNum(player);
-            LoaderLog.info("[PZLIFE][IDENTITY][detector] IsoPlayer found on attempt " + attempt
-                + ". playerNum=" + playerNum);
-            IdentityLifecycleBridge.onLocalPlayerCreated(playerNum, player);
-
-            if (IdentityLifecycleService.hasResolvedLocalAccount()) {
-                stop();
-            }
-        } catch (Throwable t) {
-            LoaderLog.error("[PZLIFE][IDENTITY][detector] local-player check failed: " + t.getMessage());
-            if (PzRuntimeConfig.isVerboseIdentityLoggingEnabled()) {
-                t.printStackTrace();
-            }
-        }
+        int playerNum = safePlayerNum(player);
+        LoaderLog.info("[PZLIFE][IDENTITY][detector] IsoPlayer found on attempt " + attemptCounter + ". playerNum=" + playerNum);
+        IdentityLifecycleService.resolveAndPromoteLocalPlayer(playerNum, player);
+        emptyChecksAfterResolve = 0;
     }
 
-    @SuppressWarnings("unchecked")
-    private static int countVisiblePlayers() {
-        try {
-            List<IsoPlayer> players = IsoPlayer.getPlayers();
-            if (players == null) {
-                return 0;
-            }
+    private static void monitorResolvedSession(IsoPlayer player, int visiblePlayers) {
+        if (!PzRuntimeConfig.isIdentitySessionMonitoringEnabled()) {
+            return;
+        }
 
-            int count = 0;
-            for (IsoPlayer player : players) {
-                if (player != null) {
-                    count++;
-                }
-            }
-            return count;
-        } catch (Exception ignored) {
+        if (player != null && visiblePlayers > 0) {
+            emptyChecksAfterResolve = 0;
+            return;
+        }
+
+        emptyChecksAfterResolve++;
+        int threshold = Math.max(1, PzRuntimeConfig.getIdentitySessionEmptyChecksToRearm());
+        if (PzRuntimeConfig.isVerboseIdentityLoggingEnabled()) {
+            LoaderLog.info(
+                "[PZLIFE][IDENTITY][detector] resolved session appears absent. emptyChecks="
+                    + emptyChecksAfterResolve + "/" + threshold
+            );
+        }
+
+        if (emptyChecksAfterResolve < threshold) {
+            return;
+        }
+
+        Integer accountId = IdentityLifecycleService.getLastResolvedAccountId();
+        String accountExternalId = IdentityLifecycleService.getLastResolvedAccountExternalId();
+        LoaderLog.info(
+            "[PZLIFE][IDENTITY][detector] local session ended; re-arming lifecycle detector. "
+                + "lastAccountId=" + accountId + ", lastAccountExternalId=" + accountExternalId
+        );
+        rearm("resolved session disappeared from Java-side detector");
+    }
+
+    private static boolean shouldLogAttempt(int attempt, int visiblePlayers) {
+        int logEvery = Math.max(1, PzRuntimeConfig.getIdentityDetectorLogEveryAttempts());
+        return attempt == 1 || visiblePlayers > 0 || attempt % logEvery == 0;
+    }
+
+    private static int countVisiblePlayers() {
+        List<IsoPlayer> players = IsoPlayer.getPlayers();
+        if (players == null) {
             return 0;
         }
+        int count = 0;
+        for (IsoPlayer candidate : players) {
+            if (candidate != null) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static int safePlayerNum(IsoPlayer player) {
@@ -156,19 +164,6 @@ public final class IdentityDiscoveryWatcher {
             return player.getPlayerNum();
         } catch (Exception ignored) {
             return 0;
-        }
-    }
-
-    private static String formatMaxAttempts(int maxAttempts) {
-        return maxAttempts > 0 ? "/" + maxAttempts : "/unlimited";
-    }
-
-    private static final class DetectorThreadFactory implements ThreadFactory {
-        @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "pirchs-pz-local-player-detector");
-            thread.setDaemon(true);
-            return thread;
         }
     }
 }

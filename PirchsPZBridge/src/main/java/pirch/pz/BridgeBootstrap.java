@@ -3,8 +3,6 @@ package pirch.pz;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import pirch.pz.bridge.BankBridge;
-import pirch.pz.bridge.OwnershipBridge;
-import pirch.pz.bridge.PermissionBridge;
 import pirch.pz.bridge.SystemBridge;
 import pirch.pz.db.SchemaManager;
 import pirch.pz.debug.IdentityDiscoveryWatcher;
@@ -28,22 +26,18 @@ public final class BridgeBootstrap {
         try {
             LoaderBootstrap.initialize();
             SchemaManager.initialize();
-
             SystemBridge.register();
             BankBridge.register();
-            OwnershipBridge.register();
-            PermissionBridge.register();
 
             initialized = true;
-
             Map<String, Object> summary = new LinkedHashMap<>();
             summary.put("registeredMethodCount", ModuleRegistry.count());
             summary.put("registeredMethods", ModuleRegistry.getAllDefinitions().keySet());
-
             LoaderLog.info("PirchsPZBridge initialization complete: " + summary);
+
             LoaderLog.info("[PZLIFE][IDENTITY] Java-side identity detector armed.");
             LoaderLog.info("[PZLIFE][IDENTITY] Goal: resolve a stable account identity first, character identity second.");
-            LoaderLog.info("[PZLIFE][IDENTITY] Strategy: low-frequency Java detection that stops permanently once resolved.");
+            LoaderLog.info("[PZLIFE][IDENTITY] Strategy: low-frequency Java detection that remains armed across session resets.");
 
             IdentityLifecycleBridge.markReady();
             IdentityDiscoveryWatcher.start();
