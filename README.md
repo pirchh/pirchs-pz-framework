@@ -3,11 +3,11 @@
 <div align="center">
 
 # Pirchs PZ DBI
-### Java runtime, bridge, and database integration for Project Zomboid
+### Java runtime, bridge, and database-backed identity/economy integration for Project Zomboid
 
-> A multi-module Java runtime for injecting backend services into the Project Zomboid JVM, registering bridge methods, and exposing database-backed game systems to higher-level callers.
+> A multi-module Java runtime for injecting backend services into the Project Zomboid JVM, registering bridge methods, resolving player identity, and persisting account and banking data in PostgreSQL.
 
-![Java](https://img.shields.io/badge/Java-17-blue?style=for-the-badge)
+![Java](https://img.shields.io/badge/Java-25-blue?style=for-the-badge)
 ![Gradle](https://img.shields.io/badge/Gradle-Multi--Project-02303A?style=for-the-badge&logo=gradle)
 ![Project Zomboid](https://img.shields.io/badge/Project%20Zomboid-Modding-6D8E23?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Prototype-orange?style=for-the-badge)
@@ -20,10 +20,12 @@
 ## Table of Contents
 
 - [What This Repo Is](#what-this-repo-is)
+- [What Changed Recently](#what-changed-recently)
 - [Current Architecture](#current-architecture)
 - [Repo Layout](#repo-layout)
 - [Modules](#modules)
 - [Current Registered Bridge Methods](#current-registered-bridge-methods)
+- [Identity Model](#identity-model)
 - [Database Layer](#database-layer)
 - [Build and Install](#build-and-install)
 - [How the Runtime Boots](#how-the-runtime-boots)
@@ -37,20 +39,60 @@
 
 ## What This Repo Is
 
-**Pirchs PZ DBI** is currently a **Gradle multi-project Java runtime** for Project Zomboid.
+**Pirchs PZ DBI** is a **Gradle multi-project Java runtime** for Project Zomboid.
 
-It is organized into three main modules:
+Despite the repo name, this is not just a tiny database helper. The repository currently contains three coordinated modules:
 
 1. **PirchsPZAgent**  
-   A Java agent jar that starts before normal game code, loads jars from the mod `lib` folder, and invokes the bootstrap entrypoint for the bridge layer.
+   A Java agent that starts before regular game code, resolves the mod library path, loads jars from the mod `lib` folder, and invokes the runtime bootstrap class.
 
 2. **PirchsPZLoader**  
-   A lightweight runtime kernel that handles initialization, method registration, dispatch, structured bridge results, and loader logging.
+   The runtime core that provides initialization, method registration, method metadata, dispatch, validation, and structured bridge results.
 
 3. **PirchsPZBridge**  
-   The actual bridge and service layer. This is where system methods, banking methods, database config, schema bootstrap, and repository/service code live.
+   The actual bridge and service layer. This is where system methods, banking methods, PostgreSQL config, schema bootstrap, identity resolution, and repository/service logic live.
 
-Even though the repo name says **DBI**, the code in the repo today is specifically wired for **PostgreSQL**, not SQLite. The runtime classpath also includes the PostgreSQL JDBC driver.
+Today, the implementation is explicitly **PostgreSQL-backed**, not SQLite-backed.
+
+---
+
+## What Changed Recently
+
+This README reflects the current codebase after the latest identity-focused updates.
+
+### Major additions now present in the repo
+
+- **Steam-backed identity foundation**
+- **Structured `PlayerIdentity` model**
+- **Project Zomboid-side identity adapter using `IsoPlayer` and `SteamUser`**
+- **Canonical external ID generation**
+- **Metadata-aware bridge method registration**
+- **New request object for invocation dispatch**
+- **Bridge method listing endpoint**
+- **Java-side identity discovery watcher**
+- **Identity lifecycle debug bridge**
+- **Expanded account schema fields for last-seen identity data**
+- **`installToMod` now copies the agent jar too**
+- **Build version bumped to `0.0.2`**
+- **Java toolchain moved to `25`**
+
+### Important practical effect
+
+The repo is no longer just "resolve a string external id and move money around."
+
+It now has the beginnings of a real identity pipeline:
+
+```text
+IsoPlayer / Steam / online player context
+        ->
+PlayerIdentity
+        ->
+canonicalExternalId
+        ->
+account resolution / account creation
+        ->
+wallet + transaction persistence
+```
 
 ---
 
@@ -63,6 +105,7 @@ Project Zomboid JVM
 PirchsPZAgent
   - premain()
   - resolves mod lib path
+  - parses agent args / property / env overrides
   - loads jars from mod lib folder
   - reflects into pirch.pz.BridgeBootstrap
         |
@@ -72,22 +115,27 @@ PirchsPZBridge
   - initializes schema
   - registers system bridge methods
   - registers bank bridge methods
-  - runs startup test calls
+  - arms Java-side identity discovery
         |
         v
 PirchsPZLoader
   - ModuleRegistry
+  - BridgeMethodDefinition
+  - BridgeRequest
   - InvocationDispatcher
   - BridgeResult
-  - Loader logging
         |
         v
-Database / Services
+Database / Services / Identity
   - DatabaseConfig
   - DatabaseManager
   - SchemaManager
   - AccountService
   - BankService
+  - PlayerIdentity
+  - PlayerIdentityService
+  - PlayerContextResolver
+  - PzPlayerIdentityAdapter
   - PostgresAccountRepository
         |
         v
@@ -106,6 +154,7 @@ pirchs-pz-dbi/
 |-- gradlew
 |-- gradlew.bat
 |-- gradle/wrapper/
+|-- README.md
 |
 |-- PirchsPZAgent/
 |   |-- build.gradle
@@ -122,6 +171,8 @@ pirchs-pz-dbi/
 |       |-- bootstrap/
 |       |   `-- LoaderBootstrap.java
 |       |-- runtime/
+|       |   |-- BridgeMethodDefinition.java
+|       |   |-- BridgeRequest.java
 |       |   |-- BridgeResult.java
 |       |   |-- InvocationDispatcher.java
 |       |   `-- ModuleRegistry.java
@@ -140,17 +191,33 @@ pirchs-pz-dbi/
         |   |   |-- DatabaseConfig.java
         |   |   |-- DatabaseManager.java
         |   |   `-- SchemaManager.java
+        |   |-- debug/
+        |   |   |-- IdentityDiscoveryWatcher.java
+        |   |   |-- IdentityLifecycleBridge.java
+        |   |   `-- IdentityTestHook.java
         |   |-- repo/
         |   |   `-- PostgresAccountRepository.java
         |   `-- service/
         |       |-- AccountService.java
-        |       `-- BankService.java
+        |       |-- BankService.java
+        |       |-- PlayerContextResolver.java
+        |       |-- PlayerIdentity.java
+        |       |-- PlayerIdentityService.java
+        |       `-- PzPlayerIdentityAdapter.java
         `-- resources/
             `-- sql/
                 |-- accounts/
+                |   |-- 001_schema.sql
+                |   |-- 002_accounts.sql
+                |   |-- 003_player_identity.sql
+                |   `-- 004_account_identity_columns.sql
                 |-- economy/
+                |   |-- 002_wallet.sql
+                |   `-- 003_transactions.sql
                 |-- ownership/
+                |   `-- 002_nodes.sql
                 `-- permissions/
+                    `-- 003_account_nodes.sql
 ```
 
 ---
@@ -160,164 +227,130 @@ pirchs-pz-dbi/
 ## 1) PirchsPZAgent
 
 ### Purpose
+
 This module is the **JVM entrypoint** for the runtime.
 
 ### What it currently does
-- Defines the jar manifest with `Premain-Class: pirch.pzagent.AgentEntry`
-- Accepts optional agent args
-- Uses a default mod lib path if none is supplied
-- Loads all jars from that folder using a `URLClassLoader`
-- Reflectively calls:
 
-```text
-pirch.pz.BridgeBootstrap.initialize()
-```
+- defines the agent startup entrypoint
+- parses agent args
+- resolves the mod lib path from:
+  - `modLib=...` agent arg
+  - `pirch.pz.modLib` system property
+  - `PIRCHS_PZ_MOD_LIB` environment variable
+  - fallback hardcoded Windows path
+- optionally resolves a custom bootstrap class
+- loads jars from the mod library folder
+- reflects into the bridge bootstrap and invokes `initialize()`
 
-### Key files
+### Default assumptions
 
-#### `AgentEntry.java`
-Main startup class for the agent.
+Current defaults in code:
 
-Current behavior:
-- logs startup
-- parses `modLib=...` if passed as agent args
-- falls back to a hardcoded default mod lib path:
+- default mod lib:
   - `C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib`
-- loads jars from that folder
-- loads bootstrap class:
+- default bootstrap class:
   - `pirch.pz.BridgeBootstrap`
-- invokes `initialize()` through reflection
 
-#### `ModJarLoader.java`
-Responsible for scanning the mod library folder and loading all `.jar` files.
+### Why this matters
 
-Current behavior:
-- fails if the folder does not exist
-- fails if no jars are found
-- sorts jars before loading
-- uses `ClassLoader.getSystemClassLoader()` as parent
-
-#### `AgentLog.java`
-Very simple prefixed logger for stdout/stderr:
-- info -> `[PirchsPZAgent]`
-- error -> `[PirchsPZAgent]`
+The recent update made the agent more flexible than the original README described. You are no longer locked to only the hardcoded mod path if you pass a property, env var, or agent arg.
 
 ---
 
 ## 2) PirchsPZLoader
 
 ### Purpose
+
 This module is the **runtime core**.
 
-It does not know gameplay details. It provides the plumbing for:
-- initialization state
-- method registration
-- method dispatch
-- structured success/failure results
-- loader-side logging
+It does not contain gameplay-specific banking or Project Zomboid identity extraction logic. Instead, it provides the bridge plumbing:
 
-### Key files
+- registration
+- dispatch
+- metadata
+- argument count validation
+- structured response handling
 
-#### `LoaderBootstrap.java`
-Tracks whether the loader has been initialized.
+### Important classes
 
-Current behavior:
-- guards against double initialization
-- logs loader startup
-- flips internal initialized state
-- exposes `isInitialized()`
+#### `BridgeMethodDefinition`
+Defines metadata for a registered bridge method:
 
-#### `ModuleRegistry.java`
-Stores registered bridge methods.
+- `methodName`
+- `version`
+- `description`
+- `minArgCount`
 
-Current behavior:
-- registers bridge handlers by method name
-- allows method lookup
-- checks whether a method exists
-- returns registered method count
-- exposes an unmodifiable view of the registry
-- logs registrations and overwrites
+#### `BridgeRequest`
+Encapsulates an invocation request:
 
-This is the heart of the bridge registration system.
+- target method name
+- argument array
+- argument count
 
-#### `InvocationDispatcher.java`
-Executes registered methods by string key.
+#### `ModuleRegistry`
+Stores registered methods and their metadata.
 
-Current behavior:
-- resolves a handler from `ModuleRegistry`
-- returns a structured failure if the method does not exist
-- executes the method with `Object... args`
-- wraps non-`BridgeResult` responses into `BridgeResult.ok(...)`
-- logs success and failure
-- catches exceptions and returns `BridgeResult.fail(...)`
+#### `InvocationDispatcher`
+Accepts either:
+- `invoke(String methodName, Object... args)`
+- `invoke(BridgeRequest request)`
 
-#### `BridgeResult.java`
-Simple structured response wrapper.
+It validates method presence and minimum argument count before executing the handler.
 
-Shape:
-- `success`
-- `data`
-- `error`
+#### `BridgeResult`
+The structured result wrapper returned from bridge calls.
 
-This is the main result object that bridge calls return today.
+### Why this matters
 
-#### `LoaderLog.java`
-Minimal prefixed logger:
-- info -> `[PirchsPZLoader]`
-- error -> `[PirchsPZLoader]`
+The loader is no longer just a string-to-function map. It now supports enough metadata to expose method discovery and safer dispatch behavior.
 
 ---
 
 ## 3) PirchsPZBridge
 
 ### Purpose
-This module contains the **actual bridge logic and game-adjacent service layer**.
 
-This is where the repo becomes useful to gameplay systems:
-- system calls
-- account resolution
-- wallet/balance handling
-- deposits and withdrawals
-- schema initialization
-- JDBC access
+This module contains the **bridge logic, identity layer, account resolution, banking behavior, schema bootstrap, and database access**.
 
-### Bootstrap flow
+This is where the runtime becomes useful to actual gameplay systems.
+
+### Current bootstrap flow
 
 `BridgeBootstrap.initialize()` currently does the following:
 
-1. prevents double initialization
+1. guards against double initialization
 2. initializes the loader
 3. initializes database schemas
 4. registers system bridge methods
 5. registers bank bridge methods
-6. runs several startup test invocations and logs the results
+6. logs registration summary
+7. marks the identity lifecycle system as ready
+8. starts the Java-side identity discovery watcher
 
-### Startup self-calls currently performed
-At startup the bridge immediately invokes:
+### Key point
 
-- `pz.bridge.system.ping`
-- `pz.bridge.system.dbPing`
-- `pz.bridge.system.resolveAccount`
-- `pz.bridge.bank.deposit`
-- `pz.bridge.bank.getBalance`
-
-That means the current runtime is already doing a small bootstrap smoke test once the bridge comes online.
+The current bridge no longer does the old startup smoke-test sequence documented in the existing README. It now focuses on method registration summary and identity discovery startup.
 
 ---
 
 ## Current Registered Bridge Methods
 
-These are the method names currently registered in code.
+These are the bridge methods currently registered in code.
 
 ### System methods
+
 - `pz.bridge.system.ping`
 - `pz.bridge.system.version`
 - `pz.bridge.system.healthCheck`
-- `pz.bridge.system.selfTest`
+- `pz.bridge.system.listMethods`
 - `pz.bridge.system.dbPing`
 - `pz.bridge.system.resolveAccount`
+- `pz.bridge.player.resolveIdentity`
 
 ### Bank methods
+
 - `pz.bridge.bank.getBalance`
 - `pz.bridge.bank.deposit`
 - `pz.bridge.bank.withdraw`
@@ -326,6 +359,7 @@ These are the method names currently registered in code.
 
 #### `pz.bridge.system.ping`
 Returns:
+
 ```text
 pong
 ```
@@ -334,151 +368,271 @@ pong
 Returns the current bridge version string.
 
 Current value in code:
+
 ```text
-PirchsPZBridge v0
+PirchsPZBridge v0.0.2
 ```
 
 #### `pz.bridge.system.healthCheck`
-Returns a map containing:
+Returns a runtime summary including:
 - bridge version
 - registered method count
-- presence checks for key methods
+- presence checks for major endpoints
 
-#### `pz.bridge.system.selfTest`
-Checks whether required methods are registered and returns:
-- registration status booleans
-- `passed = true/false`
+#### `pz.bridge.system.listMethods`
+Returns a list of registered bridge methods and their metadata:
+- method name
+- version
+- minimum argument count
+- description
 
 #### `pz.bridge.system.dbPing`
 Attempts a real JDBC connection and returns:
 - `db-ok` on success
-- a failure result if connection setup fails
+- failure text if connection setup fails
 
 #### `pz.bridge.system.resolveAccount`
-Validates an external id and resolves or creates an account record.
+Accepts either:
+- a structured `PlayerIdentity`
+- a map-like bridge payload
+- a legacy external-id style argument
 
-Returns a map with:
+Resolves or creates an account and returns:
 - `accountId`
-- `externalId`
+- normalized identity fields
 - `accountName`
 
+#### `pz.bridge.player.resolveIdentity`
+Normalizes a structured bridge argument into canonical player identity data.
+
 #### `pz.bridge.bank.getBalance`
-Returns the player/account wallet balance.
+Returns the wallet balance for a resolved identity.
 
 #### `pz.bridge.bank.deposit`
-Validates the amount and deposits funds into the wallet.
+Validates integer amount, resolves identity, and deposits funds.
 
 #### `pz.bridge.bank.withdraw`
-Validates the amount, checks available funds, and withdraws funds.
+Validates integer amount, resolves identity, checks funds, and withdraws funds.
+
+---
+
+## Identity Model
+
+One of the biggest changes in the repo is the move from loose string identifiers toward a structured identity model.
+
+## `PlayerIdentity`
+
+The current identity object can hold:
+
+- `playerSource`
+- `sourcePlayerId`
+- `steamId`
+- `onlineId`
+- `username`
+- `displayName`
+- `characterForename`
+- `characterSurname`
+- `characterFullName`
+
+### Canonical identity selection
+
+`PlayerIdentity.getCanonicalExternalId()` currently prefers identifiers in this order:
+
+1. `steamId`
+2. `user:<username>`
+3. `online:<onlineId>`
+4. `<playerSource>:<sourcePlayerId>`
+
+That means Steam is now the highest-priority identity anchor when available.
+
+### Preferred account naming
+
+`PlayerIdentity.getPreferredAccountName()` currently prefers:
+
+1. `displayName`
+2. `username`
+3. canonical external id
+
+### Preferred character naming
+
+`PlayerIdentity.getPreferredCharacterName()` currently prefers:
+
+1. `characterFullName`
+2. `characterForename`
+3. preferred account name
+
+---
+
+## Project Zomboid identity extraction
+
+## `PzPlayerIdentityAdapter`
+
+This class builds a `PlayerIdentity` from `IsoPlayer`.
+
+Current behavior includes:
+
+- reading `player.getSteamID()`
+- falling back to `SteamUser.GetSteamIDString()`
+- reading `player.getOnlineID()`
+- reading username and display name
+- attempting to resolve character forename/surname through descriptor methods
+- generating a best-effort full character name
+- assigning a source type such as:
+  - `steam`
+  - `username`
+  - `online`
+  - `unknown`
+
+## `PlayerContextResolver`
+
+This helper tries to find a usable `IsoPlayer` from the current game context.
+
+Current behavior includes:
+
+- trying `IsoPlayer.getInstance()`
+- trying `IsoPlayer.getPlayers()`
+- preferring a local player when available
+- resolving from an online ID when explicitly provided
+
+## Java-side discovery watcher
+
+## `IdentityDiscoveryWatcher`
+
+The bridge now starts a background watcher thread that:
+
+- polls roughly once per second
+- stops after a maximum attempt count
+- tries to locate a visible `IsoPlayer`
+- hands the found player to the identity lifecycle bridge
+
+## `IdentityLifecycleBridge`
+
+This debug/lifecycle helper currently:
+
+- waits until the bridge is marked ready
+- converts `IsoPlayer` into `PlayerIdentity`
+- avoids re-processing the same canonical identity repeatedly
+- resolves or creates an account
+- logs recommended database key, account name, and character name
+
+This is clearly still an early-stage discovery/debug path, but it is important enough that the README should document it.
 
 ---
 
 ## Database Layer
 
 ## Important note
-Despite earlier discussion around SQLite, the code in this repo currently uses:
+
+Although earlier discussions included SQLite ideas, the code in this repo currently uses:
 
 - **PostgreSQL JDBC**
-- driver class: `org.postgresql.Driver`
-- dependency: `org.postgresql:postgresql:42.7.3`
+- driver dependency:
+  - `org.postgresql:postgresql:42.7.3`
 
-### `DatabaseConfig.java`
+## `DatabaseConfig`
 Loads `pirchdb.properties` from the classpath and exposes database settings.
 
-Current supported settings include:
-- `pirchdb.enabled`
-- `pirchdb.type`
-- `pirchdb.host`
-- `pirchdb.port`
-- `pirchdb.name`
-- `pirchdb.user`
-- `pirchdb.password`
-- `pirchdb.ssl`
-- `pirchdb.schema.auto_init`
-- `pirchdb.schema.locations`
-- `pirchdb.url`
+## `DatabaseManager`
+Creates JDBC connections using the configured PostgreSQL settings.
 
-Current assumptions:
-- default db type is `postgres`
-- unsupported db types throw an error
-- defaults point to a PostgreSQL setup
+## `SchemaManager`
+Runs SQL resources from configured schema folders during startup.
 
-### `DatabaseManager.java`
-Creates JDBC connections.
+### Known files currently executed by `SchemaManager`
 
-Current behavior:
-- checks whether DB access is enabled
-- loads the PostgreSQL JDBC driver
-- opens a connection with URL/user/password from config
-
-### `SchemaManager.java`
-Runs SQL files from classpath resources during startup.
-
-Current behavior:
-- only runs if DB is enabled and auto-init is enabled
-- iterates configured schema folders
-- attempts known filenames in each folder
-- skips missing files silently
-- executes non-empty SQL files
-
-Known SQL filenames attempted:
 - `001_schema.sql`
 - `002_accounts.sql`
 - `002_wallet.sql`
 - `002_nodes.sql`
 - `003_transactions.sql`
 - `003_account_nodes.sql`
+- `004_account_identity_columns.sql`
 
-Configured default schema folders:
-- `sql/accounts`
-- `sql/economy`
-- `sql/ownership`
-- `sql/permissions`
+### Important note about schema files
+
+The repo also contains:
+
+- `sql/accounts/003_player_identity.sql`
+
+But `SchemaManager` does **not** currently include that filename in its known-file list.
+
+So as of the current codebase:
+
+- the file exists in the repo
+- but it is not part of the automatic schema bootstrap sequence
+
+That is worth knowing before assuming all identity SQL files are auto-applied.
 
 ---
 
 ## Service and Repository Layer
 
-## `PostgresAccountRepository.java`
-This is where the real persistence logic currently lives.
+## `AccountService`
+Thin service layer for account resolution.
+
+Now supports resolving accounts from structured `PlayerIdentity`, not just legacy external IDs.
+
+## `BankService`
+Thin service layer for:
+
+- get balance
+- deposit
+- withdraw
+
+It now accepts `PlayerIdentity` inputs in the current flow.
+
+## `PostgresAccountRepository`
+
+This is where the main persistence logic currently lives.
 
 ### Current responsibilities
-- resolve or create account by `external_id`
-- create account rows
-- update account last seen / account name
+
+- resolve or create account by external id
+- resolve or create account by `PlayerIdentity`
+- create account rows with identity metadata
+- touch/update account identity fields
+- track last-seen username/display name/online id
+- track last-seen character name fields
 - ensure wallet existence
 - fetch balance
 - deposit funds
 - withdraw funds
 - insert transaction records
 
+### Current account fields referenced in code
+
+The repository now works with identity-related columns such as:
+
+- `external_id`
+- `canonical_external_id`
+- `player_source`
+- `source_player_id`
+- `steam_id`
+- `account_name`
+- `username_last_seen`
+- `display_name_last_seen`
+- `online_id_last_seen`
+- `character_forename_last_seen`
+- `character_surname_last_seen`
+- `character_full_name_last_seen`
+- `identity_last_seen_at`
+- `last_seen_at`
+
 ### Current database areas referenced
+
 - `accounts.account`
 - `economy.wallet`
 - `economy.transactions`
 
 ### Transaction behavior
-The repository already uses JDBC transactions for:
+
+The repository uses JDBC transactions for:
+
 - account resolve/create flow
 - deposit flow
 - withdraw flow
 
-That is a good sign, because balance-changing operations are not being done as loose one-off statements.
-
-## `AccountService.java`
-Thin validation layer over account resolution.
-
-## `BankService.java`
-Thin validation layer over repository methods for:
-- get balance
-- deposit
-- withdraw
-
-### Current validation rules
-- player/account identifiers cannot be null or blank
-- deposit/withdraw amounts must be valid integers at the bridge layer
-- repository rejects non-positive amounts
-- withdraw rejects insufficient funds
+That is good, because balance-changing logic is not being performed as loose one-off statements.
 
 ---
 
@@ -486,25 +640,38 @@ Thin validation layer over repository methods for:
 
 ## Root project configuration
 
-The root Gradle build currently applies to subprojects:
+The root project currently applies to subprojects:
+
 - Java plugin
 - group: `pirch`
-- version: `0.0.1`
-- Java toolchain: **17**
+- version: `0.0.2`
+- Java toolchain: **25**
 - repository: **Maven Central**
 
-### Included modules
+## Included modules
+
 The Gradle settings currently include:
+
 - `PirchsPZLoader`
 - `PirchsPZBridge`
 - `PirchsPZAgent`
+
+### Note on root project name
+
+`settings.gradle` currently sets:
+
+```text
+rootProject.name = 'Zomboid'
+```
+
+So the Gradle project name is currently `Zomboid`, even though the repository name is `pirchs-pz-dbi`.
 
 ## Build commands
 
 From the repository root:
 
 ```bash
-gradlew build
+./gradlew build
 ```
 
 On Windows PowerShell:
@@ -513,48 +680,79 @@ On Windows PowerShell:
 .\gradlew.bat build
 ```
 
-## Special install task
+## `installToMod`
 
-The root project defines:
+The root project defines an `installToMod` task.
 
-```text
-installToMod
-```
+It currently:
 
-This task currently:
 - builds `PirchsPZLoader`
 - builds `PirchsPZBridge`
-- copies those jars into:
-  - `C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib`
+- builds `PirchsPZAgent`
+- copies all three jars into the resolved mod lib directory
 - copies the PostgreSQL runtime dependency jar into that same folder
 
+This is a meaningful change from the previous README, which said the agent jar was **not** copied. That is no longer true.
+
 ### Run it on Windows
+
 ```powershell
 .\gradlew.bat installToMod
 ```
 
-## Important note about the agent jar
-The root `installToMod` task does **not** currently copy the agent jar.
+## Mod lib resolution order
 
-So in practice, if you need the agent jar deployed too, you should build it and place it where your launch flow expects it.
+The install task and runtime flow can now resolve the mod lib directory from:
 
-A direct build for the agent module would be:
+1. Gradle property:
+   - `-PpzModLibDir=...`
+2. environment variable:
+   - `PIRCHS_PZ_MOD_LIB=...`
+3. fallback:
+   - `C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib`
+
+### Example
 
 ```powershell
-.\gradlew.bat :PirchsPZAgent:build
+.\gradlew.bat installToMod -PpzModLibDir="C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib"
 ```
+
+---
+
+## Project Zomboid compile-time classpath
+
+`PirchsPZBridge/build.gradle` now tries to resolve Project Zomboid jars from:
+
+1. Gradle property:
+   - `-PpzLibDir=...`
+2. environment variable:
+   - `PZ_LIB_DIR=...`
+3. environment variable:
+   - `PZ_GAME_DIR=...`
+4. fallback:
+   - `C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid`
+
+If that directory exists, the bridge module compiles against:
+
+- `projectzomboid.jar`
+- other jars in that directory via `fileTree`
+
+This is what enables the current code to reference Project Zomboid classes like `IsoPlayer` and `SteamUser`.
 
 ---
 
 ## How the Runtime Boots
 
 ### Step 1: Build jars
+
 Build the modules with Gradle.
 
 ### Step 2: Put runtime jars into the mod lib folder
-At minimum, the bridge and loader jars need to be in the mod `lib` folder, plus the PostgreSQL driver jar.
+
+At minimum, the loader jar, bridge jar, agent jar, and PostgreSQL driver jar need to be available in the mod `lib` folder.
 
 ### Step 3: Launch with the Java agent
+
 Your Java launch needs to include the agent jar with `-javaagent`.
 
 General shape:
@@ -563,20 +761,31 @@ General shape:
 -javaagent:path\to\PirchsPZAgent.jar
 ```
 
-If you want to explicitly override the mod lib path, the agent supports:
+### Step 4: Optional runtime overrides
+
+You can override the mod library path with either:
 
 ```text
 -javaagent:path\to\PirchsPZAgent.jar=modLib=C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib
 ```
 
-### Step 4: Agent starts bridge bootstrap
+or a JVM property / environment variable recognized by the agent.
+
+You can also override the bootstrap class with:
+
+```text
+bootstrapClass=fully.qualified.ClassName
+```
+
+### Step 5: Agent invokes bridge bootstrap
+
 The agent reflects into:
 
 ```text
 pirch.pz.BridgeBootstrap.initialize()
 ```
 
-That bootstrap initializes the loader, schema, bridges, and startup test calls.
+That bootstrap initializes the loader, schema, bridge registrations, and identity discovery startup.
 
 ---
 
@@ -588,7 +797,7 @@ The bridge expects a classpath resource named:
 pirchdb.properties
 ```
 
-Based on current code, a typical config would look something like this:
+Based on current code, a typical PostgreSQL config looks like this:
 
 ```properties
 pirchdb.enabled=true
@@ -610,144 +819,120 @@ If you provide `pirchdb.url`, it overrides the constructed JDBC URL.
 ## Development Notes
 
 ## Where to add new callable methods
+
 To expose a new bridge method:
 
 1. create or update a bridge class in `PirchsPZBridge`
-2. register the method in `ModuleRegistry.register(...)`
-3. implement logic in a service and/or repository class
-4. return `BridgeResult.ok(...)` or `BridgeResult.fail(...)`
-5. ensure the bridge registration is called from `BridgeBootstrap.initialize()`
+2. register it through `ModuleRegistry.register(...)`
+3. define useful metadata with `BridgeMethodDefinition.builder(...)`
+4. implement logic in a service and/or repository class
+5. return `BridgeResult.ok(...)` or `BridgeResult.fail(...)`
+6. ensure the registration path is called from `BridgeBootstrap.initialize()`
 
-## Suggested pattern
-A good pattern in this repo is:
+## Good current pattern
+
+A good pattern in this repo is still:
 
 ```text
 Bridge -> Service -> Repository -> Database
 ```
 
-That keeps:
-- validation near the bridge/service edge
-- SQL in the repository layer
-- dispatch concerns in the loader layer
+For identity-aware flows, the practical pattern now looks more like:
+
+```text
+Project Zomboid player context
+        ->
+PlayerIdentity
+        ->
+Bridge / Service
+        ->
+Repository
+        ->
+PostgreSQL
+```
 
 ## Good next additions for this repo
-Based on the current codebase, logical next steps would be:
+
+Based on the current codebase, likely next steps would be:
+
 - add a Lua-facing integration layer
-- add more bridge domains beyond banking
-- add richer health diagnostics
-- add safer config handling for secrets
-- add tests for repository and dispatcher behavior
-- add explicit migration/version tracking for SQL bootstrap
-- make mod lib path configurable without hardcoded user-specific defaults
+- replace debug/discovery-only identity hooks with formal production event hooks
+- add tests for identity normalization and repository behavior
+- add migration/version tracking for SQL bootstrap
+- remove remaining hardcoded Windows defaults where possible
+- decide whether `003_player_identity.sql` should be executed automatically or removed
+- formalize account/character separation if characters become first-class entities later
 
 ---
 
 ## Known Current State
 
-This repo is already more than a skeleton, but it is still early-stage.
+This repo is already beyond a skeleton, but it is still early-stage and prototype-ish in a few places.
 
 ### What is already real
+
 - multi-project Gradle setup
-- Java 17 toolchain
+- Java 25 toolchain
 - Java agent bootstrap
-- dynamic jar loading from mod lib
-- central runtime registry and dispatcher
-- structured bridge results
+- dynamic mod-lib jar loading
+- metadata-aware runtime registry
+- structured bridge request/response model
 - PostgreSQL JDBC integration
 - schema auto-run support
-- account resolution flow
-- wallet creation
+- Project Zomboid compile-time integration
+- Steam-backed identity resolution foundation
+- canonical identity generation
+- account resolution and wallet creation
 - deposit and withdraw logic
 - transaction inserts
-- startup smoke testing
+- Java-side identity discovery watcher
 
-### What is still clearly prototype-level
-- hardcoded Windows paths
-- minimal logging
-- no visible automated tests in repo
-- version string still `PirchsPZBridge v0`
-- config and deployment are still fairly manual
-- root install task does not deploy the agent jar
-- repo name suggests DB abstraction, but implementation is currently PostgreSQL-specific
+### What is still prototype-level or rough
+
+- hardcoded Windows fallback paths still exist
+- no visible automated test suite in the repo
+- identity discovery currently includes debug-oriented watcher behavior
+- some runtime behavior is still heavily log-driven
+- the repo name suggests a broad DB abstraction, but implementation is currently PostgreSQL-specific
+- `settings.gradle` still uses `rootProject.name = 'Zomboid'`
+- `003_player_identity.sql` exists but is not part of the automatic known-file bootstrap list
 
 ---
 
 ## Git Workflow
 
 ## File naming
+
 The correct filename is:
 
 ```text
 README.md
 ```
 
-Use it exactly like that. All caps `README`, lowercase `.md`.
+Use it exactly like that: all caps `README`, lowercase `.md`.
 
-That is the normal GitHub standard and GitHub will automatically render it on the repo homepage.
+GitHub will automatically render it on the repository homepage.
 
-## Make a new commit
+## Safe workflow for this README update
 
 From the repo root:
 
 ```powershell
-git status
-git add README.md
-git commit -m "docs: expand README with architecture and setup"
-```
-
-If you changed more than just the README:
-
-```powershell
-git add .
-git commit -m "docs: expand README with architecture and setup"
-```
-
-## Push to main
-If your branch is already `main` and already tracks origin:
-
-```powershell
-git push origin main
-```
-
-## If you are working on a feature branch first
-Create and switch to a branch:
-
-```powershell
 git checkout -b docs/readme-refresh
-```
-
-Commit:
-
-```powershell
 git add README.md
-git commit -m "docs: expand README with architecture and setup"
-```
-
-Push the branch:
-
-```powershell
+git commit -m "docs: update README for current identity and runtime state"
 git push -u origin docs/readme-refresh
 ```
 
-Then open a Pull Request on GitHub and merge it into `main`.
+Then open a PR and merge into `main`.
 
-## Quick safest workflow I would recommend
-For documentation changes, this is a clean flow:
+## Direct push to main
 
-```powershell
-git checkout -b docs/readme-refresh
-git add README.md
-git commit -m "docs: expand project README"
-git push -u origin docs/readme-refresh
-```
-
-Then merge via GitHub.
-
-If you do not want a branch and just want to push straight to main:
+If you are intentionally committing straight to `main`:
 
 ```powershell
 git add README.md
-git commit -m "docs: expand project README"
+git commit -m "docs: update README for current identity and runtime state"
 git push origin main
 ```
 
@@ -756,38 +941,42 @@ git push origin main
 ## Maintainer Notes
 
 ## What a new maintainer should understand first
-If someone new opens this repo, the first mental model should be:
 
-- **Agent** starts the runtime
-- **Loader** provides method registration and dispatch
-- **Bridge** exposes callable functionality
-- **Repository** performs SQL work
-- **Database config** controls connection + schema bootstrap
+The fastest correct mental model for this repo is:
+
+- **Agent** starts before normal game code
+- **Loader** owns registration and dispatch
+- **Bridge** exposes callable methods
+- **Identity layer** turns Project Zomboid player context into stable account keys
+- **Repository** persists account/wallet state
+- **PostgreSQL** is the actual backing store today
 
 ## The most important strings in the code right now
+
 - bootstrap class:
   - `pirch.pz.BridgeBootstrap`
-- loader prefix:
-  - `[PirchsPZLoader]`
-- agent prefix:
-  - `[PirchsPZAgent]`
 - current bridge version:
-  - `PirchsPZBridge v0`
+  - `PirchsPZBridge v0.0.2`
 - default mod lib path:
   - `C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib`
+- default PZ install path:
+  - `C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid`
 
 ## In plain English
-This repo currently gives you a working path for:
+
+This repo currently gives you a working base for:
 
 - injecting a Java runtime into Project Zomboid
-- loading bridge jars from a mod library folder
-- registering string-based callable methods
-- wiring those methods to real service and database logic
-- persisting bank/account data in PostgreSQL
+- loading mod-side jars
+- registering named Java bridge methods
+- normalizing player identity from live game objects
+- resolving that identity into a stable account
+- persisting wallet and transaction data in PostgreSQL
 
-That is already a strong base for larger systems like:
-- economy
+That is already enough groundwork for larger systems like:
+
 - banking
+- economy
 - ownership
 - permissions
 - player-backed persistent services
@@ -797,6 +986,5 @@ That is already a strong base for larger systems like:
 <div align="center">
 
 ### Pirchs PZ DBI
-**README generated to match the current codebase as closely as possible**
 
 </div>
