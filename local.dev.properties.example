@@ -1,13 +1,9 @@
-# Copy this file to local.dev.properties and adjust the values for your machine.
-# This file is intended to stay untracked in git.
-
-# Keep Java 25 as the default dev target unless you intentionally install and test another JDK.
 pzJavaVersion=25
 
 # Project Zomboid install root used for compileOnly zombie classes.
 pzLibDir=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid
 
-# Optional alternate game directory property if you prefer that naming.
+# Optional alternate game directory property.
 # pzGameDir=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid
 
 # Mod lib target used by installToMod.
