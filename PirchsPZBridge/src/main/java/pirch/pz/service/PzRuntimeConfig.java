@@ -4,60 +4,55 @@ import java.io.InputStream;
 import java.util.Properties;
 
 public final class PzRuntimeConfig {
-    private static final Properties PROPERTIES = new Properties();
+    private static final Properties PROPS = new Properties();
 
     static {
         try (InputStream inputStream = PzRuntimeConfig.class.getClassLoader().getResourceAsStream("pirchdb.properties")) {
             if (inputStream != null) {
-                PROPERTIES.load(inputStream);
+                PROPS.load(inputStream);
             }
         } catch (Exception e) {
-            throw new RuntimeException("Failed loading pirchdb.properties", e);
+            System.err.println("[PZLIFE][config] failed to load pirchdb.properties: " + e.getMessage());
         }
     }
 
-    private PzRuntimeConfig() {
+    private PzRuntimeConfig() {}
+
+    private static String get(String key, String def) {
+        String value = PROPS.getProperty(key);
+        if (value == null) return def;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? def : trimmed;
     }
 
-    public static boolean isIdentityDetectorEnabled() {
-        return Boolean.parseBoolean(read("pirch.identity.detector.enabled", "pirch.identity.watcher.enabled", "true"));
+    private static int getInt(String key, int def) {
+        try { return Integer.parseInt(get(key, String.valueOf(def))); } catch (Exception e) { return def; }
     }
 
-    public static long getIdentityDetectorPollMs() {
-        return Long.parseLong(read("pirch.identity.detector.poll_ms", "pirch.identity.watcher.poll_ms", "3000").trim());
+    private static long getLong(String key, long def) {
+        try { return Long.parseLong(get(key, String.valueOf(def))); } catch (Exception e) { return def; }
     }
 
-    public static int getIdentityDetectorMaxAttempts() {
-        return Integer.parseInt(read("pirch.identity.detector.max_attempts", "pirch.identity.watcher.max_attempts", "0").trim());
+    private static boolean getBool(String key, boolean def) {
+        return Boolean.parseBoolean(get(key, String.valueOf(def)));
     }
 
-    public static int getIdentityDetectorLogEveryAttempts() {
-        return Integer.parseInt(read("pirch.identity.detector.log_every_attempts", "pirch.identity.watcher.log_every_attempts", "10").trim());
-    }
-
-    public static boolean isIdentitySessionMonitoringEnabled() {
-        return Boolean.parseBoolean(read("pirch.identity.detector.monitor_after_resolve", null, "true"));
-    }
-
-    public static int getIdentitySessionEmptyChecksToRearm() {
-        return Integer.parseInt(read("pirch.identity.detector.empty_checks_to_rearm", null, "3").trim());
-    }
-
-    public static boolean isVerboseIdentityLoggingEnabled() {
-        return Boolean.parseBoolean(read("pirch.identity.logging.verbose", null, "true"));
-    }
-
-    private static String read(String primaryKey, String legacyKey, String fallback) {
-        String value = PROPERTIES.getProperty(primaryKey);
-        if (value != null && !value.isBlank()) {
-            return value;
-        }
-        if (legacyKey != null) {
-            value = PROPERTIES.getProperty(legacyKey);
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return fallback;
-    }
+    public static boolean isIdentityDetectorEnabled() { return getBool("identity.detector.enabled", true); }
+    public static long getIdentityDetectorPollMs() { return getLong("identity.detector.poll_ms", 3000L); }
+    public static int getIdentityDetectorMaxAttempts() { return getInt("identity.detector.max_attempts", 0); }
+    public static int getIdentityDetectorLogEveryAttempts() { return getInt("identity.detector.log_every_attempts", 10); }
+    public static boolean isVerboseIdentityLoggingEnabled() { return getBool("identity.logging.verbose", false); }
+    public static boolean isIdentitySessionMonitoringEnabled() { return getBool("identity.session.monitoring.enabled", true); }
+    public static int getIdentitySessionEmptyChecksToRearm() { return getInt("identity.session.empty_checks_to_rearm", 3); }
+    public static boolean isAuthSelfTestEnabled() { return getBool("auth.selftest.enabled", true); }
+    public static String getAuthSelfTestNodeKey() { return get("auth.selftest.node_key", "test:node1"); }
+    public static String getAuthSelfTestNodeType() { return get("auth.selftest.node_type", "node"); }
+    public static String getAuthSelfTestPermissionKey() { return get("auth.selftest.permission_key", "business.manage"); }
+    public static String getAuthSelfTestScopeType() { return get("auth.selftest.scope_type", "node"); }
+    public static String getAuthSelfTestScopeKey() { return get("auth.selftest.scope_key", getAuthSelfTestNodeKey()); }
+    public static boolean isBootstrapAdminEnabled() { return getBool("auth.bootstrap_admin.enabled", true); }
+    public static String getBootstrapAdminExternalId() { return get("auth.bootstrap_admin.external_id", "bootstrap:admin"); }
+    public static String getBootstrapAdminRoleKey() { return get("auth.bootstrap_admin.role_key", "admin"); }
+    public static String getBootstrapAdminDisplayName() { return get("auth.bootstrap_admin.display_name", "Bootstrap Admin"); }
+    public static boolean isAuthSelfTestTeardownEnabled() { return getBool("auth.selftest.teardown", false); }
 }
