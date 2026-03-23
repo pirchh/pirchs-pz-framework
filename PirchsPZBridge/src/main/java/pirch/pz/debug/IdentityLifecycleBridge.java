@@ -19,12 +19,22 @@ public final class IdentityLifecycleBridge {
     }
 
     public static void onLocalPlayerCreated(int playerNum, IsoPlayer player) {
+        resolve(playerNum, player, "local-player-created");
+    }
+
+    public static void onServerPlayerReady(IsoPlayer player, String module, String command) {
+        LoaderLog.info("[PZLIFE][IDENTITY][server] PlayerReady received. module=" + module + ", command=" + command);
+        resolve(0, player, "server-player-ready");
+    }
+
+    private static void resolve(int playerNum, IsoPlayer player, String source) {
         try {
             PlayerIdentity identity = IdentityLifecycleService.resolveAndPromoteLocalPlayer(playerNum, player);
             if (identity == null) {
                 return;
             }
 
+            LoaderLog.info("[PZLIFE][IDENTITY] lifecycle promotion succeeded from source=" + source);
             Map<String, Object> data = identity.toMap();
             for (Map.Entry<String, Object> entry : data.entrySet()) {
                 LoaderLog.info("[PZLIFE][IDENTITY][local] " + entry.getKey() + "=" + entry.getValue());
@@ -33,10 +43,5 @@ public final class IdentityLifecycleBridge {
             LoaderLog.error("[PZLIFE][IDENTITY][local] Failed to resolve local player identity: " + e.getMessage());
             e.printStackTrace();
         }
-    }
-
-    public static void onServerPlayerReady(IsoPlayer player, String module, String command) {
-        LoaderLog.info("[PZLIFE][IDENTITY][server] PlayerReady received. module=" + module + ", command=" + command);
-        onLocalPlayerCreated(0, player);
     }
 }

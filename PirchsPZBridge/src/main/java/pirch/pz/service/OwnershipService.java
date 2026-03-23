@@ -12,24 +12,26 @@ import pirch.pz.repo.PostgresOwnershipRepository;
 import pirch.pzloader.util.LoaderLog;
 
 public final class OwnershipService {
-
     private OwnershipService() {
     }
 
     public static Map<String, Object> claimNode(PlayerIdentity identity, String nodeKey, String nodeType) {
         try (Connection connection = DatabaseManager.getConnection()) {
+            connection.setAutoCommit(false);
+
             int accountId = PostgresAccountRepository.resolveOrCreateAccount(identity);
-
-            LoaderLog.info(
-                "[PZLIFE][AUTH][ownership] claimNode requested. accountId=" + accountId
-                    + ", nodeType=" + nodeType
-                    + ", nodeKey=" + nodeKey
-            );
-
             Map<String, Object> result =
                 castMap(PostgresOwnershipRepository.claimNode(connection, accountId, nodeKey, nodeType));
 
-            LoaderLog.info("[PZLIFE][AUTH][ownership] claimNode ok: " + result);
+            connection.commit();
+
+            LoaderLog.info(
+                "[PZLIFE][AUTH][ownership] claimNode result. accountId=" + accountId
+                    + ", nodeKey=" + nodeKey
+                    + ", nodeType=" + nodeType
+                    + ", claimed=" + result.get("claimed")
+                    + ", reason=" + result.get("reason")
+            );
             return result;
         } catch (SQLException e) {
             throw new RuntimeException(buildSqlFailureMessage("claim node", nodeKey, nodeType, e), e);
@@ -102,9 +104,7 @@ public final class OwnershipService {
     public static boolean isOwner(PlayerIdentity identity, String nodeKey) {
         try (Connection connection = DatabaseManager.getConnection()) {
             int accountId = PostgresAccountRepository.resolveOrCreateAccount(identity);
-
-            // FIXED: repo signature is (connection, accountId, nodeType, nodeKey)
-            boolean owner = PostgresOwnershipRepository.isOwner(connection, accountId, "node", nodeKey);
+            boolean owner = PostgresOwnershipRepository.isOwnerByNodeKey(connection, accountId, nodeKey);
 
             LoaderLog.info(
                 "[PZLIFE][AUTH][ownership] isOwner result. accountId=" + accountId
@@ -114,7 +114,7 @@ public final class OwnershipService {
 
             return owner;
         } catch (SQLException e) {
-            throw new RuntimeException(buildSqlFailureMessage("check node ownership", nodeKey, "node", e), e);
+            throw new RuntimeException(buildSqlFailureMessage("check node ownership", nodeKey, null, e), e);
         } catch (Exception e) {
             throw new RuntimeException("Failed to check node ownership. nodeKey=" + nodeKey + ", cause=" + e.getMessage(), e);
         }

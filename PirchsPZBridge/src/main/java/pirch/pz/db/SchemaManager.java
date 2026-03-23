@@ -13,10 +13,14 @@ public final class SchemaManager {
         "002_accounts.sql",
         "002_wallet.sql",
         "002_nodes.sql",
+        "002_account_permissions.sql",
         "003_transactions.sql",
         "003_account_nodes.sql",
         "003_account_node.sql",
-        "004_account_identity_columns.sql"
+        "004_account_identity_columns.sql",
+        "004_roles.sql",
+        "005_role_permission.sql",
+        "006_account_role.sql"
     };
 
     private SchemaManager() {

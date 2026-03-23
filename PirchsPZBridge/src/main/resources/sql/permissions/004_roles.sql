@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS permissions.role (
+    role_key TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
