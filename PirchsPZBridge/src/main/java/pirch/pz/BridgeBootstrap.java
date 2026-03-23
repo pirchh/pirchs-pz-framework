@@ -1,16 +1,22 @@
 package pirch.pz;
 
+import java.sql.Connection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import pirch.pz.bridge.BankBridge;
 import pirch.pz.bridge.OwnershipBridge;
 import pirch.pz.bridge.PermissionBridge;
+import pirch.pz.bridge.RoleBridge;
 import pirch.pz.bridge.SystemBridge;
+import pirch.pz.db.DatabaseManager;
 import pirch.pz.db.SchemaManager;
 import pirch.pz.debug.IdentityDiscoveryWatcher;
 import pirch.pz.debug.IdentityLifecycleBridge;
 import pirch.pz.service.AuthSelfTestService;
+import pirch.pz.service.BootstrapAdminService;
 import pirch.pz.service.PlayerIdentity;
+import pirch.pz.service.PzRuntimeConfig;
+import pirch.pz.service.RoleService;
 import pirch.pzloader.bootstrap.LoaderBootstrap;
 import pirch.pzloader.runtime.ModuleRegistry;
 import pirch.pzloader.util.LoaderLog;
@@ -30,11 +36,13 @@ public final class BridgeBootstrap {
         try {
             LoaderBootstrap.initialize();
             SchemaManager.initialize();
+            seedAuthBootstrap();
 
             SystemBridge.register();
             BankBridge.register();
             OwnershipBridge.register();
             PermissionBridge.register();
+            RoleBridge.register();
 
             initialized = true;
 
@@ -44,10 +52,9 @@ public final class BridgeBootstrap {
 
             LoaderLog.info("PirchsPZBridge initialization complete: " + summary);
             LoaderLog.info("[PZLIFE][IDENTITY] Java-side identity detector armed.");
-            LoaderLog.info("[PZLIFE][IDENTITY] Goal: resolve a stable account identity first, character identity second.");
-            LoaderLog.info("[PZLIFE][IDENTITY] Strategy: low-frequency Java detection that remains armed across session resets.");
-            LoaderLog.info("[PZLIFE][AUTH] Ownership + permissions v1 enabled.");
-            LoaderLog.info("[PZLIFE][AUTH] Intent: generic authorization layer for menus, nodes, businesses, and world actions.");
+            LoaderLog.info("[PZLIFE][IDENTITY] Strategy: single lifecycle promotion path, watcher stays as fallback.");
+            LoaderLog.info("[PZLIFE][AUTH] Single-owner nodes with delegated scoped access enabled.");
+            LoaderLog.info("[PZLIFE][AUTH] Roles enabled as permission bundles for global and node-scoped access.");
             LoaderLog.info("[PZLIFE][AUTH][selftest] Java-side self-test enabled. It will run once after local account resolution each session.");
 
             IdentityLifecycleBridge.markReady();
@@ -60,10 +67,24 @@ public final class BridgeBootstrap {
     }
 
     public static void note() {
-        LoaderLog.info("[PZLIFE][AUTH] next-pass overwrite pack includes bootstrap-admin, roles, and owner-scoped delegation.");
+        LoaderLog.info("[PZLIFE][AUTH] next-pass overwrite pack includes bootstrap-admin, scoped roles, and owner-scoped delegation.");
     }
 
     public static void onLocalAccountResolvedForSelfTest(PlayerIdentity identity, int accountId) {
         AuthSelfTestService.runAfterLocalResolution(identity, accountId);
+    }
+
+    private static void seedAuthBootstrap() throws Exception {
+        try (Connection connection = DatabaseManager.getConnection()) {
+            connection.setAutoCommit(false);
+            RoleService.ensureCoreRoles(connection);
+
+            if (PzRuntimeConfig.isBootstrapAdminEnabled()) {
+                int bootstrapAdminId = BootstrapAdminService.ensureBootstrapAdmin(connection);
+                LoaderLog.info("[PZLIFE][AUTH] bootstrap admin ensured. accountId=" + bootstrapAdminId);
+            }
+
+            connection.commit();
+        }
     }
 }

@@ -94,8 +94,8 @@ public final class IdentityDiscoveryWatcher {
         if (player == null) {
             if (maxAttempts > 0 && attemptCounter >= maxAttempts) {
                 LoaderLog.info(
-                    "[PZLIFE][IDENTITY][detector] reached maxAttempts without a local player. "
-                        + "Continuing to stay armed for future session detection."
+                    "[PZLIFE][IDENTITY][detector] reached maxAttempts without a local player. " +
+                        "Continuing to stay armed for future session detection."
                 );
                 attemptCounter = 0;
             }
@@ -104,7 +104,7 @@ public final class IdentityDiscoveryWatcher {
 
         int playerNum = safePlayerNum(player);
         LoaderLog.info("[PZLIFE][IDENTITY][detector] IsoPlayer found on attempt " + attemptCounter + ". playerNum=" + playerNum);
-        IdentityLifecycleService.resolveAndPromoteLocalPlayer(playerNum, player);
+        IdentityLifecycleBridge.onLocalPlayerCreated(playerNum, player);
         emptyChecksAfterResolve = 0;
     }
 

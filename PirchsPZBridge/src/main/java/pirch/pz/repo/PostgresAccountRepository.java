@@ -320,13 +320,38 @@ public final class PostgresAccountRepository {
     }
 
     private static void ensureDefaultManagePermission(Connection connection, int accountId) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(
+        // 1. Try to update existing row (NULL-safe)
+        try (PreparedStatement update = connection.prepareStatement(
+            "UPDATE permissions.account_permission "
+                + "SET active = TRUE, updated_at = NOW() "
+                + "WHERE account_id = ? "
+                + "AND permission_key = 'permissions.manage' "
+                + "AND scope_type IS NULL "
+                + "AND scope_key IS NULL")) {
+
+            update.setInt(1, accountId);
+
+            if (update.executeUpdate() > 0) {
+                return; // already existed, we're done
+            }
+        }
+
+        // 2. Insert only if it truly doesn't exist
+        try (PreparedStatement insert = connection.prepareStatement(
             "INSERT INTO permissions.account_permission "
-                + "(account_id, permission_key, scope_type, scope_key, granted_by_account_id) "
-                + "VALUES (?, 'permissions.manage', NULL, NULL, NULL) "
-                + "ON CONFLICT (account_id, permission_key, scope_type, scope_key) DO NOTHING")) {
-            statement.setInt(1, accountId);
-            statement.executeUpdate();
+                + "(account_id, permission_key, scope_type, scope_key, granted_by_account_id, active, created_at, updated_at) "
+                + "SELECT ?, 'permissions.manage', NULL, NULL, NULL, TRUE, NOW(), NOW() "
+                + "WHERE NOT EXISTS ("
+                + "  SELECT 1 FROM permissions.account_permission "
+                + "  WHERE account_id = ? "
+                + "  AND permission_key = 'permissions.manage' "
+                + "  AND scope_type IS NULL "
+                + "  AND scope_key IS NULL"
+                + ")")) {
+
+            insert.setInt(1, accountId);
+            insert.setInt(2, accountId);
+            insert.executeUpdate();
         }
     }
 

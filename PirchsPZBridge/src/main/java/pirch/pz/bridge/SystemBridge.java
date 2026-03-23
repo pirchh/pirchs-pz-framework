@@ -102,6 +102,7 @@ public final class SystemBridge {
         data.put("hasResolvePlayerIdentity", ModuleRegistry.has("pz.bridge.player.resolveIdentity"));
         data.put("hasOwnershipClaim", ModuleRegistry.has("pz.bridge.ownership.claimNode"));
         data.put("hasPermissionGrant", ModuleRegistry.has("pz.bridge.permissions.grant"));
+        data.put("hasRoleAssign", ModuleRegistry.has("pz.bridge.roles.assign"));
         data.put("hasRunAuthSelfTest", ModuleRegistry.has("pz.bridge.system.runAuthSelfTest"));
         data.put("lifecycle", IdentityLifecycleService.snapshot().toMap());
         data.put("authSelfTest", AuthSelfTestService.getStatus());
