@@ -1,7 +1,12 @@
 package pirch.pz.service;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import pirch.pz.db.DatabaseManager;
+import pirch.pz.repo.PostgresAccountRepository;
+import pirch.pz.repo.PostgresOwnershipRepository;
 import pirch.pz.repo.PostgresPermissionRepository;
 
 public final class PermissionService {
@@ -17,8 +22,23 @@ public final class PermissionService {
         String scopeType,
         String scopeKey
     ) {
-        authorizeManage(actor, target, permissionKey);
-        return PostgresPermissionRepository.grant(target, permissionKey, scopeType, scopeKey);
+        try (Connection connection = DatabaseManager.getConnection()) {
+            int actorAccountId = PostgresAccountRepository.resolveOrCreateAccount(actor);
+            int targetAccountId = PostgresAccountRepository.resolveOrCreateAccount(target);
+
+            authorizeManage(connection, actorAccountId, scopeType, scopeKey);
+
+            return castMap(PostgresPermissionRepository.grant(
+                connection,
+                targetAccountId,
+                permissionKey,
+                scopeType,
+                scopeKey,
+                actorAccountId
+            ));
+        } catch (SQLException e) {
+            throw new RuntimeException("grant failed", e);
+        }
     }
 
     public static boolean revoke(
@@ -28,29 +48,111 @@ public final class PermissionService {
         String scopeType,
         String scopeKey
     ) {
-        authorizeManage(actor, target, permissionKey);
-        return PostgresPermissionRepository.revoke(target, permissionKey, scopeType, scopeKey);
+        try (Connection connection = DatabaseManager.getConnection()) {
+            int actorAccountId = PostgresAccountRepository.resolveOrCreateAccount(actor);
+            int targetAccountId = PostgresAccountRepository.resolveOrCreateAccount(target);
+
+            authorizeManage(connection, actorAccountId, scopeType, scopeKey);
+
+            return PostgresPermissionRepository.revoke(
+                connection,
+                targetAccountId,
+                permissionKey,
+                scopeType,
+                scopeKey
+            );
+        } catch (SQLException e) {
+            throw new RuntimeException("revoke failed", e);
+        }
     }
 
-    public static boolean has(PlayerIdentity target, String permissionKey, String scopeType, String scopeKey) {
-        return PostgresPermissionRepository.has(target, permissionKey, scopeType, scopeKey);
+    public static boolean has(
+        PlayerIdentity target,
+        String permissionKey,
+        String scopeType,
+        String scopeKey
+    ) {
+        try (Connection connection = DatabaseManager.getConnection()) {
+            int targetAccountId = PostgresAccountRepository.resolveOrCreateAccount(target);
+            return PostgresPermissionRepository.has(connection, targetAccountId, permissionKey, scopeType, scopeKey);
+        } catch (SQLException e) {
+            throw new RuntimeException("has failed", e);
+        }
     }
 
     public static List<Map<String, Object>> list(PlayerIdentity target) {
-        return PostgresPermissionRepository.list(target);
+        try (Connection connection = DatabaseManager.getConnection()) {
+            int targetAccountId = PostgresAccountRepository.resolveOrCreateAccount(target);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> result =
+                (List<Map<String, Object>>) (List<?>) PostgresPermissionRepository.list(connection, targetAccountId);
+            return result;
+        } catch (SQLException e) {
+            throw new RuntimeException("list failed", e);
+        }
     }
 
-    private static void authorizeManage(PlayerIdentity actor, PlayerIdentity target, String permissionKey) {
-        PlayerIdentityService.validate(actor);
-        PlayerIdentityService.validate(target);
+    public static Map<String, Object> explain(
+        PlayerIdentity target,
+        String permissionKey,
+        String scopeType,
+        String scopeKey
+    ) {
+        try (Connection connection = DatabaseManager.getConnection()) {
+            int targetAccountId = PostgresAccountRepository.resolveOrCreateAccount(target);
+            return castMap(PostgresPermissionRepository.explain(
+                connection,
+                targetAccountId,
+                permissionKey,
+                scopeType,
+                scopeKey
+            ));
+        } catch (SQLException e) {
+            throw new RuntimeException("explain failed", e);
+        }
+    }
 
-        if (actor.getAccountExternalId().equals(target.getAccountExternalId())
-            && "ownership.use".equals(permissionKey)) {
+    private static void authorizeManage(
+        Connection connection,
+        int actorAccountId,
+        String scopeType,
+        String scopeKey
+    ) throws SQLException {
+        if (hasManagePermission(connection, actorAccountId)) {
             return;
         }
 
-        if (!PostgresPermissionRepository.has(actor, MANAGE_PERMISSION, null, null)) {
-            throw new IllegalStateException("actor does not have permissions.manage");
+        if (canDelegateOwnedScope(connection, actorAccountId, scopeType, scopeKey)) {
+            return;
         }
+
+        throw new IllegalStateException("actor is not authorized to manage this permission grant");
+    }
+
+    private static boolean hasManagePermission(Connection connection, int actorAccountId) throws SQLException {
+        return PostgresPermissionRepository.has(connection, actorAccountId, MANAGE_PERMISSION, null, null);
+    }
+
+    private static boolean canDelegateOwnedScope(
+        Connection connection,
+        int actorAccountId,
+        String scopeType,
+        String scopeKey
+    ) throws SQLException {
+        if (scopeType == null || scopeKey == null) {
+            return false;
+        }
+
+        if (!"node".equalsIgnoreCase(scopeType)) {
+            return false;
+        }
+
+        return PostgresOwnershipRepository.isOwner(connection, actorAccountId, scopeType, scopeKey)
+            && PostgresPermissionRepository.has(connection, actorAccountId, "ownership.delegate", scopeType, scopeKey);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object value) {
+        return (Map<String, Object>) value;
     }
 }

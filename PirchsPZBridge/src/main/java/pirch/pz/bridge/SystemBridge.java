@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import pirch.pz.db.DatabaseManager;
 import pirch.pz.service.AccountService;
+import pirch.pz.service.AuthSelfTestService;
 import pirch.pz.service.IdentityLifecycleService;
 import pirch.pz.service.PlayerIdentity;
 import pirch.pz.service.PlayerIdentityService;
@@ -76,6 +77,20 @@ public final class SystemBridge {
                 .build(),
             args -> BridgeResult.ok(IdentityLifecycleService.snapshot().toMap())
         );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.system.runAuthSelfTest")
+                .description("Runs the Java-side ownership and permissions self-test for the currently resolved local account")
+                .build(),
+            args -> BridgeResult.ok(AuthSelfTestService.runNow())
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.system.getAuthSelfTestStatus")
+                .description("Returns status and last result for the Java-side ownership and permissions self-test")
+                .build(),
+            args -> BridgeResult.ok(AuthSelfTestService.getStatus())
+        );
     }
 
     private static BridgeResult healthCheck() {
@@ -87,7 +102,9 @@ public final class SystemBridge {
         data.put("hasResolvePlayerIdentity", ModuleRegistry.has("pz.bridge.player.resolveIdentity"));
         data.put("hasOwnershipClaim", ModuleRegistry.has("pz.bridge.ownership.claimNode"));
         data.put("hasPermissionGrant", ModuleRegistry.has("pz.bridge.permissions.grant"));
+        data.put("hasRunAuthSelfTest", ModuleRegistry.has("pz.bridge.system.runAuthSelfTest"));
         data.put("lifecycle", IdentityLifecycleService.snapshot().toMap());
+        data.put("authSelfTest", AuthSelfTestService.getStatus());
         return BridgeResult.ok(data);
     }
 
@@ -114,32 +131,20 @@ public final class SystemBridge {
         }
     }
 
-    private static BridgeResult resolveAccount(Object... args) {
+    private static BridgeResult resolveAccount(Object[] args) {
         try {
-            PlayerIdentity identity;
-            if (args.length >= 2 && !(args[0] instanceof Map) && !(args[0] instanceof PlayerIdentity)) {
-                identity = PlayerIdentity.builder()
-                    .playerSource("legacy")
-                    .sourcePlayerId(String.valueOf(args[0]).trim())
-                    .username(String.valueOf(args[0]).trim())
-                    .displayName(args[1] == null ? null : String.valueOf(args[1]).trim())
-                    .build();
-            } else {
-                identity = PlayerIdentityService.fromBridgeArg(args[0]);
+            if (args.length == 1 && args[0] instanceof String externalId) {
+                return BridgeResult.ok(AccountService.resolveOrCreateAccount(PlayerIdentity.legacy(externalId)));
             }
 
-            int accountId = AccountService.resolveOrCreateAccount(identity);
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("accountId", accountId);
-            data.putAll(identity.toMap());
-            data.put("accountName", identity.getPreferredAccountName());
-            return BridgeResult.ok(data);
+            PlayerIdentity identity = PlayerIdentityService.fromBridgeArg(args[0]);
+            return BridgeResult.ok(AccountService.resolveOrCreateAccount(identity));
         } catch (Exception e) {
             return BridgeResult.fail(e.getMessage());
         }
     }
 
-    private static BridgeResult resolvePlayerIdentity(Object... args) {
+    private static BridgeResult resolvePlayerIdentity(Object[] args) {
         try {
             PlayerIdentity identity = PlayerIdentityService.fromBridgeArg(args[0]);
             return BridgeResult.ok(identity.toMap());

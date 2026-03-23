@@ -21,7 +21,9 @@ public final class OwnershipBridge {
                 try {
                     PlayerIdentity identity = PlayerIdentityService.fromBridgeArg(args[0]);
                     String nodeKey = String.valueOf(args[1]).trim();
-                    String nodeType = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : "generic";
+                    String nodeType = args.length >= 3 && args[2] != null
+                        ? String.valueOf(args[2]).trim()
+                        : "generic";
                     return BridgeResult.ok(OwnershipService.claimNode(identity, nodeKey, nodeType));
                 } catch (Exception e) {
                     return BridgeResult.fail(e.getMessage());
@@ -68,6 +70,22 @@ public final class OwnershipBridge {
                 try {
                     PlayerIdentity identity = PlayerIdentityService.fromBridgeArg(args[0]);
                     return BridgeResult.ok(OwnershipService.listOwnedNodes(identity));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.ownership.isOwner")
+                .description("Checks whether an account currently owns a node")
+                .minArgCount(2)
+                .build(),
+            args -> {
+                try {
+                    PlayerIdentity identity = PlayerIdentityService.fromBridgeArg(args[0]);
+                    String nodeKey = String.valueOf(args[1]).trim();
+                    return BridgeResult.ok(OwnershipService.isOwner(identity, nodeKey));
                 } catch (Exception e) {
                     return BridgeResult.fail(e.getMessage());
                 }

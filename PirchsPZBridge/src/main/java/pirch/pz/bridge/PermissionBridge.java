@@ -52,7 +52,7 @@ public final class PermissionBridge {
 
         ModuleRegistry.register(
             BridgeMethodDefinition.builder("pz.bridge.permissions.has")
-                .description("Checks whether an account has a permission")
+                .description("Checks whether an account has a permission, including owner-implied access where applicable")
                 .minArgCount(2)
                 .build(),
             args -> {
@@ -77,6 +77,24 @@ public final class PermissionBridge {
                 try {
                     PlayerIdentity target = PlayerIdentityService.fromBridgeArg(args[0]);
                     return BridgeResult.ok(PermissionService.list(target));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.permissions.explain")
+                .description("Explains why an account is or is not authorized for a permission and scope")
+                .minArgCount(2)
+                .build(),
+            args -> {
+                try {
+                    PlayerIdentity target = PlayerIdentityService.fromBridgeArg(args[0]);
+                    String permissionKey = String.valueOf(args[1]).trim();
+                    String scopeType = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : null;
+                    String scopeKey = args.length >= 4 && args[3] != null ? String.valueOf(args[3]).trim() : null;
+                    return BridgeResult.ok(PermissionService.explain(target, permissionKey, scopeType, scopeKey));
                 } catch (Exception e) {
                     return BridgeResult.fail(e.getMessage());
                 }

@@ -33,10 +33,13 @@ public final class IdentityLifecycleService {
                     + ", lastAccountExternalId=" + lastResolvedAccountExternalId
             );
         }
+
         lastResolvedAccountExternalId = null;
         lastResolvedAccountId = null;
         lastIdentity = null;
         lastResolvedPlayerNum = null;
+
+        AuthSelfTestService.reset(reason);
     }
 
     public static synchronized void resetAll() {
@@ -81,6 +84,7 @@ public final class IdentityLifecycleService {
             LoaderLog.info("[PZLIFE][IDENTITY] lifecycle received player before ready state.");
             return null;
         }
+
         if (player == null) {
             LoaderLog.info("[PZLIFE][IDENTITY] lifecycle received null player.");
             return null;
@@ -88,6 +92,7 @@ public final class IdentityLifecycleService {
 
         PlayerIdentity identity = new PzPlayerIdentityAdapter().fromIsoPlayer(player);
         String accountExternalId = identity.getAccountExternalId();
+
         if (accountExternalId == null || accountExternalId.isBlank()) {
             LoaderLog.info("[PZLIFE][IDENTITY] lifecycle resolved a player but no accountExternalId was available yet.");
             return null;
@@ -103,6 +108,7 @@ public final class IdentityLifecycleService {
         }
 
         int accountId = AccountService.resolveOrCreateAccount(identity);
+
         lastResolvedAccountExternalId = accountExternalId;
         lastResolvedAccountId = accountId;
         lastIdentity = identity;
@@ -113,6 +119,10 @@ public final class IdentityLifecycleService {
                 + ", accountId=" + accountId
                 + ", accountExternalId=" + accountExternalId
         );
+
+        AuthSelfTestService.onLocalAccountResolved(identity, accountId);
+        AuthSelfTestService.runAfterLocalResolution(identity, accountId);
+
         return identity;
     }
 }
