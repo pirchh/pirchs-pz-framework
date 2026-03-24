@@ -1,10 +1,13 @@
 package pirch.pz.db;
 
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.Properties;
 
 public final class DatabaseConfig {
     private static final Properties PROPERTIES = new Properties();
+    private static final String DEFAULT_SCHEMA_LOCATIONS =
+        "sql/accounts,sql/economy,sql/ownership,sql/permissions,sql/roles";
 
     static {
         try (InputStream inputStream = DatabaseConfig.class
@@ -59,11 +62,12 @@ public final class DatabaseConfig {
     }
 
     public static String[] getSchemaLocations() {
-        String raw = PROPERTIES.getProperty(
-            "pirchdb.schema.locations",
-            "sql/accounts,sql/economy,sql/ownership,sql/permissions"
-        );
-        return raw.split(",");
+        String raw = PROPERTIES.getProperty("pirchdb.schema.locations", DEFAULT_SCHEMA_LOCATIONS);
+        return Arrays.stream(raw.split(","))
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .distinct()
+            .toArray(String[]::new);
     }
 
     public static String getJdbcUrl() {

@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import pirch.pz.bridge.BankBridge;
+import pirch.pz.bridge.DebugBridge;
 import pirch.pz.bridge.OwnershipBridge;
 import pirch.pz.bridge.PermissionBridge;
 import pirch.pz.bridge.RoleBridge;
@@ -43,19 +44,24 @@ public final class BridgeBootstrap {
             OwnershipBridge.register();
             PermissionBridge.register();
             RoleBridge.register();
+            if (PzRuntimeConfig.isDebugBridgeEnabled()) {
+                DebugBridge.register();
+            }
 
             initialized = true;
 
             Map<String, Object> summary = new LinkedHashMap<>();
             summary.put("registeredMethodCount", ModuleRegistry.count());
             summary.put("registeredMethods", ModuleRegistry.getAllDefinitions().keySet());
+            summary.put("debugBridgeEnabled", PzRuntimeConfig.isDebugBridgeEnabled());
 
             LoaderLog.info("PirchsPZBridge initialization complete: " + summary);
             LoaderLog.info("[PZLIFE][IDENTITY] Java-side identity detector armed.");
             LoaderLog.info("[PZLIFE][IDENTITY] Strategy: single lifecycle promotion path, watcher stays as fallback.");
             LoaderLog.info("[PZLIFE][AUTH] Single-owner nodes with delegated scoped access enabled.");
             LoaderLog.info("[PZLIFE][AUTH] Roles enabled as permission bundles for global and node-scoped access.");
-            LoaderLog.info("[PZLIFE][AUTH][selftest] Java-side self-test enabled. It will run once after local account resolution each session.");
+            LoaderLog.info("[PZLIFE][AUTH][selftest] Java-side self-test enabled=" + PzRuntimeConfig.isAuthSelfTestEnabled());
+            LoaderLog.info("[PZLIFE][AUTH][debug] Debug bridge enabled=" + PzRuntimeConfig.isDebugBridgeEnabled());
 
             IdentityLifecycleBridge.markReady();
             IdentityDiscoveryWatcher.start();
@@ -67,7 +73,7 @@ public final class BridgeBootstrap {
     }
 
     public static void note() {
-        LoaderLog.info("[PZLIFE][AUTH] next-pass overwrite pack includes bootstrap-admin, scoped roles, and owner-scoped delegation.");
+        LoaderLog.info("[PZLIFE][AUTH] next-pass overwrite pack includes bootstrap-admin, scoped roles, owner-scoped delegation, and debug test helpers.");
     }
 
     public static void onLocalAccountResolvedForSelfTest(PlayerIdentity identity, int accountId) {
