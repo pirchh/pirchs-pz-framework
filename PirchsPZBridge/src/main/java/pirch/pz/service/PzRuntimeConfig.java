@@ -119,4 +119,8 @@ public final class PzRuntimeConfig {
     public static boolean isAuthSelfTestTeardownEnabled() {
         return getBool("auth.selftest.teardown", false);
     }
+
+    public static boolean isDebugBridgeEnabled() {
+        return getBool("debug.bridge.enabled", true);
+    }
 }
