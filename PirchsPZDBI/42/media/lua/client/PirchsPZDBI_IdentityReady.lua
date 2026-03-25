@@ -14,13 +14,12 @@ local function resolve(player)
 
     print("[PZLIFE][LUA][client] resolving identity playerNum=" .. tostring(playerNum))
 
-    if not isClient() then
-        pirch.pz.debug.IdentityLifecycleBridge.onLocalPlayerCreated(playerNum, player)
-        resolved = true
-        return
+    if isClient() then
+        sendClientCommand("PirchsPZDBI", "PlayerReady", { playerNum = playerNum })
+    else
+        print("[PZLIFE][LUA][client] single-player detected; Java-side detector will resolve local identity")
     end
 
-    sendClientCommand("PirchsPZDBI", "PlayerReady", { playerNum = playerNum })
     resolved = true
 end
 

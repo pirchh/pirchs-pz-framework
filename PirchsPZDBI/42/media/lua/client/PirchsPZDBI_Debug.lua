@@ -69,6 +69,10 @@ local function safeText(widget, fallback)
     return fallback
 end
 
+local function hasDebugFacade()
+    return pz and pz.bridge and pz.bridge.debug and pz.bridge.debug.isAvailable and pz.bridge.debug.isAvailable()
+end
+
 function PirchsPZDBIDebugMenu:new(x, y, w, h)
     local o = ISPanel:new(x, y, w, h)
     setmetatable(o, self)
@@ -84,7 +88,6 @@ function PirchsPZDBIDebugMenu:new(x, y, w, h)
     o.activeTab = "Identity"
     o.tabButtons = {}
     o.actionButtons = {}
-    o.ui = {}
     return o
 end
 
@@ -123,7 +126,7 @@ function PirchsPZDBIDebugMenu:prerender()
     self:drawText("Role", 194, 144, 0.95, 0.95, 0.95, 1, FONT_SMALL)
 
     self:drawText("Bridge Status", 398, 88, 0.74, 0.86, 0.96, 1, FONT_SMALL)
-    self:drawText(self.statusText == "READY" and "pz.bridge.debug detected" or "pz.bridge.debug missing", 398, 108, 1, 1, 1, 1, FONT_SMALL)
+    self:drawText(self.statusText == "READY" and "debug facade attached" or "debug facade unavailable", 398, 108, 1, 1, 1, 1, FONT_SMALL)
     self:drawText("Current Section", 398, 140, 0.74, 0.86, 0.96, 1, FONT_SMALL)
     self:drawText(self.activeTab, 398, 160, 1, 1, 1, 1, FONT_MEDIUM)
     self:drawText("Last Result", 398, 192, 0.74, 0.86, 0.96, 1, FONT_SMALL)
@@ -145,7 +148,7 @@ function PirchsPZDBIDebugMenu:prerender()
 end
 
 function PirchsPZDBIDebugMenu:updateBridgeStatus()
-    if pz and pz.bridge and pz.bridge.debug then
+    if hasDebugFacade() then
         self.statusText = "READY"
         self.statusColor = { r = 0.35, g = 0.95, b = 0.55, a = 1.0 }
     else
@@ -199,6 +202,40 @@ function PirchsPZDBIDebugMenu:addActionButton(x, y, w, h, title, internal)
     return btn
 end
 
+function PirchsPZDBIDebugMenu:layoutActionButtonsForTab(tab)
+    local defs = TAB_ACTIONS[tab] or {}
+    local actionX = 208
+    local actionY = 302
+    local actionW = 270
+    local actionH = 36
+    local gapX = 18
+    local gapY = 12
+    local maxRows = 4
+    local col = 0
+    local row = 0
+
+    for _, btn in pairs(self.actionButtons) do
+        btn:setVisible(false)
+    end
+
+    for _, def in ipairs(defs) do
+        local btn = self.actionButtons[def.id]
+        if btn then
+            btn:setX(actionX + col * (actionW + gapX))
+            btn:setY(actionY + row * (actionH + gapY))
+            btn:setWidth(actionW)
+            btn:setHeight(actionH)
+            btn:setVisible(true)
+
+            row = row + 1
+            if row >= maxRows then
+                row = 0
+                col = col + 1
+            end
+        end
+    end
+end
+
 function PirchsPZDBIDebugMenu:create()
     self.nodeKey = self:createTextBox(30, 106, 148, "test:node_debug_1")
     self.permission = self:createTextBox(194, 106, 148, "debug.use")
@@ -211,28 +248,13 @@ function PirchsPZDBIDebugMenu:create()
         tabY = tabY + 42
     end
 
-    local actionX = 208
-    local actionY = 302
-    local actionW = 270
-    local actionH = 36
-    local gapX = 18
-    local gapY = 12
-    local maxRows = 4
-    local col = 0
-    local row = 0
-
+    local created = {}
     for _, tabName in ipairs(TAB_ORDER) do
         local defs = TAB_ACTIONS[tabName]
         for _, def in ipairs(defs) do
-            if not self.actionButtons[def.id] then
-                local x = actionX + col * (actionW + gapX)
-                local y = actionY + row * (actionH + gapY)
-                self:addActionButton(x, y, actionW, actionH, def.label, def.id)
-                row = row + 1
-                if row >= maxRows then
-                    row = 0
-                    col = col + 1
-                end
+            if not created[def.id] then
+                self:addActionButton(0, 0, 270, 36, def.label, def.id)
+                created[def.id] = true
             end
         end
     end
@@ -248,8 +270,8 @@ function PirchsPZDBIDebugMenu:pushLine(text)
 end
 
 function PirchsPZDBIDebugMenu:getBridge()
-    if pz == nil or pz.bridge == nil or pz.bridge.debug == nil then
-        return nil, "pz.bridge.debug not ready"
+    if not hasDebugFacade() then
+        return nil, "debug facade unavailable"
     end
     return pz.bridge.debug, nil
 end
@@ -281,15 +303,7 @@ function PirchsPZDBIDebugMenu:setActiveTab(tab)
         end
     end
 
-    local visible = {}
-    for _, def in ipairs(TAB_ACTIONS[tab] or {}) do
-        visible[def.id] = true
-    end
-
-    for internal, btn in pairs(self.actionButtons) do
-        btn:setVisible(visible[internal] == true)
-    end
-
+    self:layoutActionButtonsForTab(tab)
     self:updateWrappedResult(self.lastResult)
 end
 
@@ -353,6 +367,7 @@ function PirchsPZDBIDebugMenu:onOptionMouseDown(button)
     elseif button.internal == "CLOSE" then
         self:setVisible(false)
         self:removeFromUIManager()
+        MENU = nil
     end
 end
 
@@ -367,7 +382,7 @@ local function createMenu()
     ui:setVisible(true)
     ui:updateWrappedResult("idle")
     ui:pushLine("debug menu opened")
-    ui:pushLine("sidebar layout enabled")
+    ui:pushLine("lua exposer/global facade retry enabled")
     ui:pushLine("nodeKey=test:node_debug_1 | nodeType=node | permission=debug.use | role=owner")
     return ui
 end
@@ -383,12 +398,12 @@ local function toggleMenu()
     if MENU and MENU:getIsVisible() then
         MENU:setVisible(false)
         MENU:removeFromUIManager()
-        logLine("debug menu closed")
+        MENU = nil
+        print("[PZLIFE][LUA][debugmenu] debug menu closed")
         return
     end
 
     MENU = createMenu()
-    logLine("debug menu opened")
 end
 
 local function onKeyPressed(key)

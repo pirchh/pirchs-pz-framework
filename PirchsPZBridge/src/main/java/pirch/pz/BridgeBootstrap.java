@@ -13,6 +13,7 @@ import pirch.pz.db.DatabaseManager;
 import pirch.pz.db.SchemaManager;
 import pirch.pz.debug.IdentityDiscoveryWatcher;
 import pirch.pz.debug.IdentityLifecycleBridge;
+import pirch.pz.lua.LuaExposureBootstrap;
 import pirch.pz.service.AuthSelfTestService;
 import pirch.pz.service.BootstrapAdminService;
 import pirch.pz.service.PlayerIdentity;
@@ -48,12 +49,16 @@ public final class BridgeBootstrap {
                 DebugBridge.register();
             }
 
+            boolean luaExposed = LuaExposureBootstrap.tryExposeNow();
+
             initialized = true;
 
             Map<String, Object> summary = new LinkedHashMap<>();
             summary.put("registeredMethodCount", ModuleRegistry.count());
             summary.put("registeredMethods", ModuleRegistry.getAllDefinitions().keySet());
             summary.put("debugBridgeEnabled", PzRuntimeConfig.isDebugBridgeEnabled());
+            summary.put("luaBridgeFacadeExposed", luaExposed);
+            summary.put("luaBridgeFacadeExposeAttempts", LuaExposureBootstrap.getAttempts());
 
             LoaderLog.info("PirchsPZBridge initialization complete: " + summary);
             LoaderLog.info("[PZLIFE][IDENTITY] Java-side identity detector armed.");
@@ -62,6 +67,7 @@ public final class BridgeBootstrap {
             LoaderLog.info("[PZLIFE][AUTH] Roles enabled as permission bundles for global and node-scoped access.");
             LoaderLog.info("[PZLIFE][AUTH][selftest] Java-side self-test enabled=" + PzRuntimeConfig.isAuthSelfTestEnabled());
             LoaderLog.info("[PZLIFE][AUTH][debug] Debug bridge enabled=" + PzRuntimeConfig.isDebugBridgeEnabled());
+            LoaderLog.info("[PZLIFE][LUA] LuaBridgeFacade exposed=" + luaExposed + " attempts=" + LuaExposureBootstrap.getAttempts());
 
             IdentityLifecycleBridge.markReady();
             IdentityDiscoveryWatcher.start();
