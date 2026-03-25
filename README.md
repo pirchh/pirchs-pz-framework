@@ -1,5 +1,19 @@
 # Pirchs PZ DBI
-> Java-side bridge, persistence layer, and runtime bootstrap stack for Project Zomboid
+
+<div align="center">
+
+# Pirchs PZ DBI
+### Java-powered backend runtime, bridge layer, and persistence framework for Project Zomboid
+
+> A modular Java runtime injected into the Project Zomboid JVM via a Java agent, providing a structured bridge between Lua and backend services, including identity, authentication, ownership, roles, permissions, and persistent data systems powered by PostgreSQL.
+
+![Java](https://img.shields.io/badge/Java-17%2B-ED8B00?style=for-the-badge&logo=java&logoColor=white)
+![Runtime](https://img.shields.io/badge/Runtime-Java%20Agent-blue?style=for-the-badge)
+![Bridge](https://img.shields.io/badge/Bridge-Lua%20↔%20Java-purple?style=for-the-badge)
+![Database](https://img.shields.io/badge/Database-PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white)
+![Status](https://img.shields.io/badge/Status-Active%20Development-orange?style=for-the-badge)
+
+</div>
 
 ---
 
