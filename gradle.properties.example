@@ -1,3 +1,6 @@
-pzJavaVersion=21
+pzJavaVersion=25
+
+# Uncomment and set these locally as needed.
 # pzLibDir=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid
-# pzModLibDir=C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib
+# pzGameDir=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid
+# pzModLibDir=C:/Users/your-user/Zomboid/mods/PirchsPZDBI/42/lib

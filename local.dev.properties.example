@@ -1,3 +1,6 @@
+# Copy this file to local.dev.properties and set values for your machine.
+# This file is intentionally local-only and should not be committed with secrets.
+
 pzJavaVersion=25
 
 # Project Zomboid install root used for compileOnly zombie classes.
@@ -7,4 +10,4 @@ pzLibDir=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid
 # pzGameDir=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid
 
 # Mod lib target used by installToMod.
-pzModLibDir=C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib
+pzModLibDir=C:/Users/your-user/Zomboid/mods/PirchsPZDBI/42/lib

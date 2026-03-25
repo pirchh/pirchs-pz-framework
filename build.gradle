@@ -54,16 +54,13 @@ def resolveProperty(String propertyName, String envName, String fallback = null)
     return fallback
 }
 
-def defaultPzGameDir() {
-    return 'C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid'
-}
-
-def defaultModLibDir() {
-    return 'C:/Users/ryanj/Zomboid/mods/PirchsPZDBI/42/lib'
+def resolvePzCompileDir() {
+    return resolveProperty('pzLibDir', 'PZ_LIB_DIR',
+        resolveProperty('pzGameDir', 'PZ_GAME_DIR', null))
 }
 
 def resolveModLibDir() {
-    def configured = resolveProperty('pzModLibDir', 'PIRCHS_PZ_MOD_LIB', defaultModLibDir())
+    def configured = resolveProperty('pzModLibDir', 'PIRCHS_PZ_MOD_LIB', null)
     if (configured != null && !configured.isBlank()) {
         return file(configured)
     }
@@ -72,29 +69,29 @@ def resolveModLibDir() {
 
 tasks.register('verifyEnv') {
     doLast {
-        def pzLibDir = resolveProperty('pzLibDir', 'PZ_LIB_DIR',
-            resolveProperty('pzGameDir', 'PZ_GAME_DIR', defaultPzGameDir()))
-        def modLibDir = resolveProperty('pzModLibDir', 'PIRCHS_PZ_MOD_LIB', defaultModLibDir())
+        def pzCompileDir = resolvePzCompileDir()
+        def modLibDir = resolveProperty('pzModLibDir', 'PIRCHS_PZ_MOD_LIB', null)
+        def resolvedInstallTarget = resolveModLibDir()
 
         println '== Pirchs PZ DBI environment check =='
         println "Java toolchain target: ${subprojects.first().java.toolchain.languageVersion.get()}"
-        println "Project Zomboid dir: ${pzLibDir ?: '(not set)'}"
-        println "Mod lib dir: ${modLibDir ?: '(not set, installToMod will use build/install/mod-lib)'}"
+        println "Project Zomboid dir: ${pzCompileDir ?: '(not set)'}"
+        println "Configured mod lib dir: ${modLibDir ?: '(not set)'}"
+        println "Resolved install target: ${resolvedInstallTarget.absolutePath}"
 
-        if (pzLibDir == null) {
+        if (pzCompileDir == null) {
             println ''
             println 'Project Zomboid compile path is not configured.'
             println 'Set one of:'
             println '  -PpzLibDir="C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid"'
             println '  PZ_LIB_DIR=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid'
+            println '  -PpzGameDir="C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid"'
             println '  PZ_GAME_DIR=C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid'
         } else {
-            println "PZ compile path exists: ${file(pzLibDir).exists()}"
+            println "PZ compile path exists: ${file(pzCompileDir).exists()}"
         }
 
-        if (modLibDir != null) {
-            println "Configured mod lib exists: ${file(modLibDir).exists()}"
-        }
+        println "Resolved mod lib exists: ${resolvedInstallTarget.exists()}"
     }
 }
 
@@ -123,6 +120,6 @@ tasks.register('installToMod') {
             include 'postgresql-*.jar'
         }
 
-        println "Jars copied to PZ mod folder: ${modLib.absolutePath}"
+        println "Jars copied to target folder: ${modLib.absolutePath}"
     }
 }
