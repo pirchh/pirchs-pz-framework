@@ -7,7 +7,7 @@ import zombie.debug.DebugLog;
  * Bridge bootstrap should only initialize Java-side services and register bridge methods.
  *
  * <p>Lua exposure is now expected to happen from the patched engine LuaManager.Exposer.exposeAll()
- * path, mirroring the Sickle-style pattern discussed during debugging.</p>
+ * </p>
  */
 public final class BridgeBootstrap {
     private static volatile boolean initialized;
