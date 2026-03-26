@@ -363,6 +363,7 @@ The current registered debug/runtime bridge methods are:
 - `pz.bridge.debug.isLocalIdentityReady`
 - `pz.bridge.debug.selfTestNow`
 - `pz.bridge.debug.selfTestStatus`
+- `pz.bridge.debug.runSmokeSuite`
 - `pz.bridge.debug.resetLifecycle`
 - `pz.bridge.debug.localSnapshot`
 
@@ -596,7 +597,13 @@ The strongest candidates are:
 ### 5. Keep the docs synchronized with the live bridge surface
 The bridge method list and module docs should stay aligned with the actual code.
 
----
+The UI maps button clicks directly to the Java bridge methods listed above. That makes the current repo especially strong for live manual testing of:
+- local identity readiness
+- smoke tests
+- node ownership actions
+- permission grant/revoke/check/explain flows
+- role assign/revoke/check/list flows
+- bridge status checks
 
 ## Repository Layout
 
