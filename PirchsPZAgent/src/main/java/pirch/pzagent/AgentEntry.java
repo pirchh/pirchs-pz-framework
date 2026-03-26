@@ -1,7 +1,9 @@
 package pirch.pzagent;
 
+import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -27,12 +29,15 @@ public final class AgentEntry {
 
             Map<String, String> parsedArgs = parseAgentArgs(agentArgs);
             String modLibPath = resolveModLibPath(parsedArgs);
-            String bootstrapClassName = parsedArgs.getOrDefault("bootstrapClass", DEFAULT_BOOTSTRAP_CLASS);
+            String bootstrapClassName = parsedArgs.getOrDefault("bootstrapClass", DEFAULT_BOOTSTRAP_CLASS).trim();
 
             AgentLog.info("Using mod lib path: " + modLibPath);
             AgentLog.info("Using bootstrap class: " + bootstrapClassName);
 
-            ClassLoader modClassLoader = ModJarLoader.loadModLibFolder(Path.of(modLibPath));
+            Path modLibFolder = Path.of(modLibPath).toAbsolutePath().normalize();
+            validateModLibFolder(modLibFolder);
+
+            ClassLoader modClassLoader = ModJarLoader.loadModLibFolder(modLibFolder);
             Class<?> bootstrapClass = Class.forName(bootstrapClassName, true, modClassLoader);
             Method initializeMethod = bootstrapClass.getMethod("initialize");
             initializeMethod.invoke(null);
@@ -41,6 +46,30 @@ public final class AgentEntry {
         } catch (Throwable t) {
             AgentLog.error("Agent startup failed: " + t.getMessage());
             t.printStackTrace();
+        }
+    }
+
+    private static void validateModLibFolder(Path modLibFolder) throws IOException {
+        if (!Files.exists(modLibFolder)) {
+            throw new IllegalStateException("Configured mod lib folder does not exist: " + modLibFolder);
+        }
+        if (!Files.isDirectory(modLibFolder)) {
+            throw new IllegalStateException("Configured mod lib path is not a directory: " + modLibFolder);
+        }
+
+        long jarCount;
+        try (var stream = Files.list(modLibFolder)) {
+            jarCount = stream
+                .filter(Files::isRegularFile)
+                .map(path -> path.getFileName().toString().toLowerCase())
+                .filter(name -> name.endsWith(".jar"))
+                .count();
+        }
+
+        if (jarCount == 0) {
+            AgentLog.info("No jars were found in mod lib folder yet: " + modLibFolder);
+        } else {
+            AgentLog.info("Discovered " + jarCount + " jar(s) in mod lib folder.");
         }
     }
 
@@ -60,6 +89,7 @@ public final class AgentEntry {
             return fromEnv.trim();
         }
 
+        AgentLog.info("No modLib override supplied; falling back to default path.");
         return DEFAULT_MOD_LIB;
     }
 

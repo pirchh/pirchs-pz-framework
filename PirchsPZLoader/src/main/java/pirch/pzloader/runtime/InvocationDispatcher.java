@@ -1,5 +1,6 @@
 package pirch.pzloader.runtime;
 
+import pirch.pzloader.bootstrap.LoaderBootstrap;
 import pirch.pzloader.util.LoaderLog;
 
 public final class InvocationDispatcher {
@@ -19,6 +20,12 @@ public final class InvocationDispatcher {
         if (methodName == null || methodName.isBlank()) {
             return BridgeResult.fail("methodName cannot be null or blank");
         }
+        methodName = methodName.trim();
+
+        if (!LoaderBootstrap.isInitialized()) {
+            LoaderLog.info("Invocation arrived before loader bootstrap initialized; initializing now.");
+            LoaderBootstrap.initialize();
+        }
 
         ModuleRegistry.BridgeMethod handler = ModuleRegistry.get(methodName);
         if (handler == null) {
@@ -37,14 +44,14 @@ public final class InvocationDispatcher {
         try {
             Object result = handler.invoke(request.getArgs());
             if (result instanceof BridgeResult bridgeResult) {
-                LoaderLog.info("Invoked method: " + methodName + " -> " + bridgeResult);
+                LoaderLog.info("Invoked method: " + methodName + " argc=" + request.argCount() + " -> " + bridgeResult);
                 return bridgeResult;
             }
 
             BridgeResult wrapped = BridgeResult.ok(result);
-            LoaderLog.info("Invoked method: " + methodName + " -> " + wrapped);
+            LoaderLog.info("Invoked method: " + methodName + " argc=" + request.argCount() + " -> " + wrapped);
             return wrapped;
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             String error = "Invocation failed for " + methodName + ": " + ex.getMessage();
             LoaderLog.error(error);
             ex.printStackTrace();

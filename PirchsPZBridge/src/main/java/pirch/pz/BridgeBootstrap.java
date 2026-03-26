@@ -1,15 +1,47 @@
 package pirch.pz;
 
+import java.util.Arrays;
+import java.util.List;
+
 import pirch.pz.bridge.DebugBridge;
+import pirch.pz.debug.IdentityDiscoveryWatcher;
+import pirch.pz.debug.IdentityLifecycleBridge;
+import pirch.pzloader.bootstrap.LoaderBootstrap;
+import pirch.pzloader.runtime.ModuleRegistry;
+
 import zombie.debug.DebugLog;
 
 /**
  * Bridge bootstrap should only initialize Java-side services and register bridge methods.
  *
- * <p>Lua exposure is now expected to happen from the patched engine LuaManager.Exposer.exposeAll()
- * </p>
+ * <p>Lua exposure is expected to happen from the patched engine LuaManager.Exposer.exposeAll().</p>
  */
 public final class BridgeBootstrap {
+
+    private static final List<String> REQUIRED_DEBUG_METHODS = Arrays.asList(
+        "pz.bridge.debug.isLocalIdentityReady",
+        "pz.bridge.debug.selfTestNow",
+        "pz.bridge.debug.selfTestStatus",
+        "pz.bridge.debug.runSmokeSuite",
+        "pz.bridge.debug.resetLifecycle",
+        "pz.bridge.debug.claimNode",
+        "pz.bridge.debug.releaseNode",
+        "pz.bridge.debug.getNodeOwner",
+        "pz.bridge.debug.listOwnedNodes",
+        "pz.bridge.debug.grantPermissionToSelf",
+        "pz.bridge.debug.revokePermissionFromSelf",
+        "pz.bridge.debug.hasPermission",
+        "pz.bridge.debug.explainPermission",
+        "pz.bridge.debug.listPermissions",
+        "pz.bridge.debug.assignRoleToSelf",
+        "pz.bridge.debug.revokeRoleFromSelf",
+        "pz.bridge.debug.hasRole",
+        "pz.bridge.debug.listRoles",
+        "pz.bridge.debug.localSnapshot",
+        "pz.bridge.debug.listAvailableMethods",
+        "pz.bridge.debug.bridgeSnapshot"
+    );
+
     private static volatile boolean initialized;
 
     private BridgeBootstrap() {
@@ -21,16 +53,43 @@ public final class BridgeBootstrap {
             return;
         }
 
-        // Keep your existing service/bootstrap chain here.
-        // The key point of this refactor is that Java registers methods here,
-        // while Lua exposure happens later from patched LuaManager.Exposer.
+        DebugLog.General.debugln("[PZLIFE][BOOT] Initializing BridgeBootstrap...");
+
+        // 1. Initialize loader/runtime registry
+        LoaderBootstrap.initialize();
+
+        // 2. Register all bridge methods
         DebugBridge.register();
 
+        // 3. Mark identity lifecycle as ready
+        IdentityLifecycleBridge.markReady();
+        DebugLog.General.debugln("[PZLIFE][IDENTITY] Java-side identity lifecycle marked ready");
+
+        // 4. Start identity discovery watcher (polls for local player)
+        IdentityDiscoveryWatcher.start();
+        DebugLog.General.debugln("[PZLIFE][IDENTITY] Java-side identity detector armed");
+
+        // 5. Validate all required bridge methods exist
+        validateBridgeSurface();
+
         initialized = true;
-        DebugLog.General.debugln("[PZLIFE][BOOT] BridgeBootstrap.initialize() completed");
+
+        DebugLog.General.debugln(
+            "[PZLIFE][BOOT] BridgeBootstrap.initialize() completed with methods=" + ModuleRegistry.count()
+        );
     }
 
     public static boolean isInitialized() {
         return initialized;
+    }
+
+    private static void validateBridgeSurface() {
+        for (String methodName : REQUIRED_DEBUG_METHODS) {
+            if (!ModuleRegistry.has(methodName)) {
+                throw new IllegalStateException(
+                    "Required bridge method missing after bootstrap: " + methodName
+                );
+            }
+        }
     }
 }
