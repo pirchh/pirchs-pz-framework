@@ -44,6 +44,8 @@ local TAB_ACTIONS = {
     },
     Utility = {
         { id = "REFRESH_STATUS", label = "Refresh Bridge Status" },
+        { id = "LIST_METHODS", label = "List Methods" },
+        { id = "BRIDGE_SNAPSHOT", label = "Bridge Snapshot" },
         { id = "LOG_DEFAULTS", label = "Log Current Inputs" },
         { id = "CLEAR_LOG", label = "Clear Log" },
         { id = "CLOSE", label = "Close Console" },
@@ -70,9 +72,35 @@ local METHOD = {
     REVOKE_ROLE = "pz.bridge.debug.revokeRoleFromSelf",
     HAS_ROLE = "pz.bridge.debug.hasRole",
     LIST_ROLES = "pz.bridge.debug.listRoles",
+    LIST_METHODS = "pz.bridge.debug.listAvailableMethods",
+    BRIDGE_SNAPSHOT = "pz.bridge.debug.bridgeSnapshot",
 }
 
 PirchsPZDBIDebugMenu = ISPanel:derive("PirchsPZDBIDebugMenu")
+
+local ACTION_TO_LUA_NAME = {
+    READY = "isLocalIdentityReady",
+    SNAPSHOT = "localSnapshot",
+    SELF_TEST_NOW = "selfTestNow",
+    SELF_TEST_STATUS = "selfTestStatus",
+    RESET_LIFECYCLE = "resetLifecycle",
+    RUN_SMOKE = "runSmokeSuite",
+    CLAIM_NODE = "claimNode",
+    RELEASE_NODE = "releaseNode",
+    GET_NODE_OWNER = "getNodeOwner",
+    LIST_OWNED_NODES = "listOwnedNodes",
+    GRANT_PERMISSION = "grantPermissionToSelf",
+    REVOKE_PERMISSION = "revokePermissionFromSelf",
+    HAS_PERMISSION = "hasPermission",
+    EXPLAIN_PERMISSION = "explainPermission",
+    LIST_PERMISSIONS = "listPermissions",
+    ASSIGN_ROLE = "assignRoleToSelf",
+    REVOKE_ROLE = "revokeRoleFromSelf",
+    HAS_ROLE = "hasRole",
+    LIST_ROLES = "listRoles",
+    LIST_METHODS = "listAvailableMethods",
+    BRIDGE_SNAPSHOT = "bridgeSnapshot",
+}
 
 local function log(v)
     print("[PZLIFE][LUA][debug] " .. tostring(v))
@@ -95,18 +123,22 @@ local function safeText(widget, fallback)
     return fallback
 end
 
-local function hasGlobalBridge()
-    return type(pzlife) == "function"
-        and type(pzlife_has) == "function"
-        and type(pzlife_invoke0) == "function"
-        and type(pzlife_invoke1) == "function"
-        and type(pzlife_invoke2) == "function"
-        and type(pzlife_invoke3) == "function"
+local function bridgeApiReady()
+    return pz ~= nil and pz.bridge ~= nil and type(pz.bridge.isAvailable) == "function"
+end
+
+local function hasBridge()
+    return bridgeApiReady() and pz.bridge.isAvailable()
 end
 
 local function getBridgeStatus()
-    local status = {
-        present = hasGlobalBridge(),
+    if bridgeApiReady() and type(pz.bridge.status) == "function" then
+        return pz.bridge.status()
+    end
+
+    return {
+        available = false,
+        status = "bridge-api-missing",
         hasPzlife = type(pzlife) == "function",
         hasHas = type(pzlife_has) == "function",
         hasInvoke0 = type(pzlife_invoke0) == "function",
@@ -114,53 +146,17 @@ local function getBridgeStatus()
         hasInvoke2 = type(pzlife_invoke2) == "function",
         hasInvoke3 = type(pzlife_invoke3) == "function",
     }
-
-    if type(pzlife_bridge_status) == "function" then
-        local ok, value = pcall(function()
-            return pzlife_bridge_status()
-        end)
-        status.bridgeStatusCallOk = ok
-        status.bridgeStatusCallValue = value
-    end
-
-    return status
 end
 
 local function invokeBridgeMethod(methodName, ...)
-    if not hasGlobalBridge() then
-        return false, nil, "PZLife global bridge unavailable"
+    if not bridgeApiReady() then
+        return false, nil, "PZLife bridge API unavailable"
     end
 
-    local argc = select("#", ...)
-    local ok, result
-
-    if argc == 0 then
-        ok, result = pcall(function()
-            return pzlife_invoke0(methodName)
-        end)
-    elseif argc == 1 then
-        local a1 = ...
-        ok, result = pcall(function()
-            return pzlife_invoke1(methodName, a1)
-        end)
-    elseif argc == 2 then
-        local a1, a2 = ...
-        ok, result = pcall(function()
-            return pzlife_invoke2(methodName, a1, a2)
-        end)
-    elseif argc == 3 then
-        local a1, a2, a3 = ...
-        ok, result = pcall(function()
-            return pzlife_invoke3(methodName, a1, a2, a3)
-        end)
-    else
-        return false, nil, "Too many arguments for debug bridge: " .. tostring(argc)
+    local result = pz.bridge.invokeIfPresent(methodName, ...)
+    if type(result) == "table" and result.ok == false then
+        return false, nil, result.error or "unknown bridge error"
     end
-
-    if not ok then
-        return false, nil, "global invoke failed: " .. tostring(result)
-    end
-
     return true, result, nil
 end
 
@@ -192,6 +188,7 @@ function PirchsPZDBIDebugMenu:new(x, y, w, h)
     o.tabButtons = {}
     o.actionButtons = {}
     o.bridgeStatusSnapshot = {}
+    o.supportedMethods = {}
     return o
 end
 
@@ -243,8 +240,13 @@ end
 
 function PirchsPZDBIDebugMenu:updateBridgeStatus()
     self.bridgeStatusSnapshot = getBridgeStatus()
+    self.supportedMethods = {}
 
-    if self.bridgeStatusSnapshot.present then
+    if bridgeApiReady() and pz.bridge.debug and type(pz.bridge.debug.supportedMethodNames) == "function" then
+        self.supportedMethods = pz.bridge.debug.supportedMethodNames()
+    end
+
+    if self.bridgeStatusSnapshot.available then
         self.statusText = "READY"
         self.statusColor = { r = 0.35, g = 0.95, b = 0.55, a = 1.0 }
     else
@@ -253,18 +255,23 @@ function PirchsPZDBIDebugMenu:updateBridgeStatus()
     end
 end
 
-function PirchsPZDBIDebugMenu:finishCall(label, ok, value)
-    if ok then
-        self.lastResult = tostring(value)
-        self:updateWrappedResult(self.lastResult)
-        self:pushLine(tostring(label) .. " => ok=true value=" .. clip(self.lastResult, 220))
-        log(tostring(label) .. " => ok=true value=" .. clip(self.lastResult, 220))
-    else
-        self.lastResult = tostring(value)
-        self:updateWrappedResult(self.lastResult)
-        self:pushLine(tostring(label) .. " => ok=false value=" .. clip(self.lastResult, 220))
-        log(tostring(label) .. " => ok=false value=" .. clip(self.lastResult, 220))
+function PirchsPZDBIDebugMenu:isActionSupported(actionId)
+    local methodName = METHOD[actionId]
+    if methodName == nil then
+        return true
     end
+    local luaName = ACTION_TO_LUA_NAME[actionId]
+    if luaName == nil then
+        return false
+    end
+    return self.supportedMethods ~= nil and self.supportedMethods[luaName] ~= nil
+end
+
+function PirchsPZDBIDebugMenu:finishCall(label, ok, value)
+    self.lastResult = tostring(value)
+    self:updateWrappedResult(self.lastResult)
+    self:pushLine(tostring(label) .. " => ok=" .. tostring(ok) .. " value=" .. clip(self.lastResult, 220))
+    log(tostring(label) .. " => ok=" .. tostring(ok) .. " value=" .. clip(self.lastResult, 220))
     self:updateBridgeStatus()
 end
 
@@ -275,21 +282,12 @@ function PirchsPZDBIDebugMenu:invokeById(actionId, ...)
         return
     end
 
-    if not hasGlobalBridge() then
-        self:finishCall(methodName, false, "PZLife global bridge unavailable")
+    if not bridgeApiReady() then
+        self:finishCall(methodName, false, "PZLife bridge API unavailable")
         return
     end
 
-    local okHas, supported = pcall(function()
-        return pzlife_has(methodName)
-    end)
-
-    if not okHas then
-        self:finishCall(methodName, false, "pzlife_has failed: " .. tostring(supported))
-        return
-    end
-
-    if not supported then
+    if not self:isActionSupported(actionId) then
         self:finishCall(methodName, false, "Method not exposed: " .. tostring(methodName))
         return
     end
@@ -404,7 +402,7 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
     elseif button.internal == "RESET_LIFECYCLE" then
         self:invokeById("RESET_LIFECYCLE")
     elseif button.internal == "RUN_SMOKE" then
-        self:invokeById("RUN_SMOKE")
+        self:invokeById("RUN_SMOKE", nodeKey, nodeType)
     elseif button.internal == "CLAIM_NODE" then
         self:invokeById("CLAIM_NODE", nodeKey, nodeType)
     elseif button.internal == "RELEASE_NODE" then
@@ -433,11 +431,11 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
         self:invokeById("LIST_ROLES")
     elseif button.internal == "REFRESH_STATUS" then
         self:updateBridgeStatus()
-        if self.statusText == "READY" then
-            self:pushLine("bridge status refreshed: PZLife global bridge ready")
-        else
-            self:pushLine("bridge status refreshed: PZLife global bridge unavailable")
-        end
+        self:pushLine("bridge status refreshed: " .. tostring(self.bridgeStatusSnapshot.status))
+    elseif button.internal == "LIST_METHODS" then
+        self:invokeById("LIST_METHODS")
+    elseif button.internal == "BRIDGE_SNAPSHOT" then
+        self:invokeById("BRIDGE_SNAPSHOT")
     elseif button.internal == "LOG_DEFAULTS" then
         self:pushLine("nodeKey=" .. nodeKey .. " | nodeType=" .. nodeType .. " | permission=" .. permission .. " | role=" .. role)
     elseif button.internal == "CLEAR_LOG" then
@@ -495,9 +493,9 @@ function PirchsPZDBIDebugMenu:prerender()
     self:drawRect(self.logPanelX, self.logPanelY, self.logPanelW, self.logPanelH, 0.20, 0.02, 0.02, 0.02)
     self:drawRectBorder(self.logPanelX, self.logPanelY, self.logPanelW, self.logPanelH, 0.9, 0.18, 0.30, 0.42)
 
-    local bridgeDetail = "PZLife global bridge unavailable"
+    local bridgeDetail = "PZLife bridge unavailable"
     if self.statusText == "READY" then
-        bridgeDetail = "PZLife global bridge attached"
+        bridgeDetail = "PZLife bridge attached | methods=" .. tostring(self.bridgeStatusSnapshot and self.bridgeStatusSnapshot.status or "ready")
     end
     self:drawText(bridgeDetail, self.logPanelX + 8, self.logPanelY + 8, 0.55, 0.85, 0.95, 1.0, FONT_SMALL)
 
@@ -523,7 +521,7 @@ local function createMenu()
     ui:setVisible(true)
     ui:updateWrappedResult("idle")
     ui:pushLine("debug menu opened")
-    ui:pushLine("using pzlife global invoke path")
+    ui:pushLine("using canonical pz.bridge contract")
     ui:pushLine("nodeKey=test:node_debug_1 | nodeType=node | permission=debug.use | role=owner")
     return ui
 end
@@ -554,11 +552,11 @@ end
 
 local function onGameStart()
     logLine("press F6 to open the PZLife debug console")
-    if hasGlobalBridge() then
-        logLine("PZLife global bridge ready")
+    local status = getBridgeStatus()
+    if status.available then
+        logLine("PZLife bridge ready status=" .. tostring(status.status))
     else
-        local status = getBridgeStatus()
-        logLine("PZLife global bridge pending: present=" .. tostring(status.present)
+        logLine("PZLife bridge pending status=" .. tostring(status.status)
             .. " hasPzlife=" .. tostring(status.hasPzlife)
             .. " hasHas=" .. tostring(status.hasHas)
             .. " hasInvoke0=" .. tostring(status.hasInvoke0)

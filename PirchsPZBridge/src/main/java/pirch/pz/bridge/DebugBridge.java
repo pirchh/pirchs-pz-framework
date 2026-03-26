@@ -1,6 +1,8 @@
 package pirch.pz.bridge;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import pirch.pz.service.AuthSelfTestService;
 import pirch.pz.service.IdentityLifecycleService;
@@ -8,15 +10,22 @@ import pirch.pz.service.OwnershipService;
 import pirch.pz.service.PermissionService;
 import pirch.pz.service.PlayerIdentity;
 import pirch.pz.service.RoleService;
+import pirch.pzloader.bootstrap.LoaderBootstrap;
 import pirch.pzloader.runtime.BridgeMethodDefinition;
 import pirch.pzloader.runtime.BridgeResult;
 import pirch.pzloader.runtime.ModuleRegistry;
 
 public final class DebugBridge {
+    private static volatile boolean registered;
+
     private DebugBridge() {
     }
 
-    public static void register() {
+    public static synchronized void register() {
+        if (registered) {
+            return;
+        }
+
         ModuleRegistry.register(
             BridgeMethodDefinition.builder("pz.bridge.debug.isLocalIdentityReady")
                 .description("Returns true when the local account identity has been resolved and debug methods can run")
@@ -288,6 +297,22 @@ public final class DebugBridge {
                 .build(),
             args -> BridgeResult.ok(snapshot("manual snapshot"))
         );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.debug.listAvailableMethods")
+                .description("Lists all currently registered bridge method names")
+                .build(),
+            args -> BridgeResult.ok(new ArrayList<>(ModuleRegistry.listMethodNames()))
+        );
+
+        ModuleRegistry.register(
+            BridgeMethodDefinition.builder("pz.bridge.debug.bridgeSnapshot")
+                .description("Returns loader and bridge registration state for runtime diagnostics")
+                .build(),
+            args -> BridgeResult.ok(bridgeSnapshot())
+        );
+
+        registered = true;
     }
 
     private static boolean isLocalIdentityReady() {
@@ -334,6 +359,25 @@ public final class DebugBridge {
         result.put("playerNum", IdentityLifecycleService.getLastResolvedPlayerNum());
         result.put("accountExternalId", identity != null ? identity.getAccountExternalId() : null);
         result.put("identity", identity != null ? identity.toMap() : null);
+        return result;
+    }
+
+    private static Map<String, Object> bridgeSnapshot() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("registered", registered);
+        result.put("loader", LoaderBootstrap.snapshot());
+        result.put("methodCount", ModuleRegistry.count());
+
+        Map<String, Map<String, Object>> definitions = new LinkedHashMap<>();
+        for (Map.Entry<String, BridgeMethodDefinition> entry : ModuleRegistry.getAllDefinitions().entrySet()) {
+            BridgeMethodDefinition definition = entry.getValue();
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("version", definition.getVersion());
+            data.put("description", definition.getDescription());
+            data.put("minArgCount", definition.getMinArgCount());
+            definitions.put(entry.getKey(), data);
+        }
+        result.put("definitions", definitions);
         return result;
     }
 }

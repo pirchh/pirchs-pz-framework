@@ -8,6 +8,13 @@ log("PirchsPZDBI_Bridge.lua loaded")
 
 pz = pz or {}
 pz.bridge = pz.bridge or {}
+pz.bridge.debug = pz.bridge.debug or {}
+
+local MAX_INVOKE_ARGS = 3
+local attempts = 0
+local announced_ready = false
+local announced_timeout = false
+local max_wait_attempts = 900
 
 local function has_global(name)
     return type(_G[name]) == "function"
@@ -22,31 +29,65 @@ local function bridge_ready()
         and has_global("pzlife_invoke3")
 end
 
-local function normalize_error(ok, result)
+local function bridge_status_text()
+    if has_global("pzlife_bridge_status") then
+        local ok, value = pcall(pzlife_bridge_status)
+        if ok then
+            return tostring(value)
+        end
+        return "status-call-failed: " .. tostring(value)
+    end
+    return bridge_ready() and "ready" or "pending"
+end
+
+local function unavailable_result(message)
+    return {
+        ok = false,
+        error = tostring(message),
+        bridgeReady = bridge_ready(),
+        bridgeStatus = bridge_status_text(),
+    }
+end
+
+local function normalize_call(ok, result)
     if ok then
         return result
     end
-    return { ok = false, error = tostring(result) }
+    return unavailable_result(result)
 end
 
 local function invoke0(method)
-    return normalize_error(pcall(pzlife_invoke0, method))
+    return normalize_call(pcall(pzlife_invoke0, method))
 end
 
 local function invoke1(method, a1)
-    return normalize_error(pcall(pzlife_invoke1, method, a1))
+    return normalize_call(pcall(pzlife_invoke1, method, a1))
 end
 
 local function invoke2(method, a1, a2)
-    return normalize_error(pcall(pzlife_invoke2, method, a1, a2))
+    return normalize_call(pcall(pzlife_invoke2, method, a1, a2))
 end
 
 local function invoke3(method, a1, a2, a3)
-    return normalize_error(pcall(pzlife_invoke3, method, a1, a2, a3))
+    return normalize_call(pcall(pzlife_invoke3, method, a1, a2, a3))
 end
 
 function pz.bridge.isAvailable()
     return bridge_ready()
+end
+
+function pz.bridge.status()
+    return {
+        available = bridge_ready(),
+        status = bridge_status_text(),
+        attempts = attempts,
+        hasPzlife = has_global("pzlife"),
+        hasHas = has_global("pzlife_has"),
+        hasInvoke0 = has_global("pzlife_invoke0"),
+        hasInvoke1 = has_global("pzlife_invoke1"),
+        hasInvoke2 = has_global("pzlife_invoke2"),
+        hasInvoke3 = has_global("pzlife_invoke3"),
+    }
 end
 
 function pz.bridge.hasMethod(method)
@@ -59,7 +100,7 @@ end
 
 function pz.bridge.invoke(method, ...)
     if not bridge_ready() then
-        return nil
+        return unavailable_result("PZLife global bridge unavailable")
     end
 
     local argc = select("#", ...)
@@ -71,12 +112,17 @@ function pz.bridge.invoke(method, ...)
         return invoke2(method, select(1, ...), select(2, ...))
     elseif argc == 3 then
         return invoke3(method, select(1, ...), select(2, ...), select(3, ...))
-    else
-        return { ok = false, error = "pz.bridge.invoke currently supports up to 3 args" }
     end
+
+    return unavailable_result("pz.bridge.invoke currently supports up to " .. tostring(MAX_INVOKE_ARGS) .. " args")
 end
 
-pz.bridge.debug = pz.bridge.debug or {}
+function pz.bridge.invokeIfPresent(method, ...)
+    if not pz.bridge.hasMethod(method) then
+        return unavailable_result("Method not exposed: " .. tostring(method))
+    end
+    return pz.bridge.invoke(method, ...)
+end
 
 function pz.bridge.debug.isAvailable()
     return pz.bridge.isAvailable() and pz.bridge.hasMethod("pz.bridge.debug.isLocalIdentityReady")
@@ -89,6 +135,8 @@ local debug_methods = {
     runSmokeSuite = "pz.bridge.debug.runSmokeSuite",
     resetLifecycle = "pz.bridge.debug.resetLifecycle",
     localSnapshot = "pz.bridge.debug.localSnapshot",
+    listAvailableMethods = "pz.bridge.debug.listAvailableMethods",
+    bridgeSnapshot = "pz.bridge.debug.bridgeSnapshot",
     claimNode = "pz.bridge.debug.claimNode",
     releaseNode = "pz.bridge.debug.releaseNode",
     getNodeOwner = "pz.bridge.debug.getNodeOwner",
@@ -104,28 +152,33 @@ local debug_methods = {
     listRoles = "pz.bridge.debug.listRoles"
 }
 
+function pz.bridge.debug.methodName(luaName)
+    return debug_methods[luaName]
+end
+
+function pz.bridge.debug.supportedMethodNames()
+    local available = {}
+    for lua_name, method_name in pairs(debug_methods) do
+        if pz.bridge.hasMethod(method_name) then
+            available[lua_name] = method_name
+        end
+    end
+    return available
+end
+
 for lua_name, method_name in pairs(debug_methods) do
     pz.bridge.debug[lua_name] = function(...)
-        return pz.bridge.invoke(method_name, ...)
+        return pz.bridge.invokeIfPresent(method_name, ...)
     end
 end
 
-local attempts = 0
-local announced_ready = false
-
 local function on_tick()
     attempts = attempts + 1
+
     if bridge_ready() then
         if not announced_ready then
             announced_ready = true
-            local status = "ready"
-            if has_global("pzlife_bridge_status") then
-                local ok, value = pcall(pzlife_bridge_status)
-                if ok then
-                    status = tostring(value)
-                end
-            end
-            log("global bridge ready after attempts=" .. tostring(attempts) .. " status=" .. status)
+            log("global bridge ready after attempts=" .. tostring(attempts) .. " status=" .. bridge_status_text())
         end
         Events.OnTick.Remove(on_tick)
         return
@@ -133,6 +186,12 @@ local function on_tick()
 
     if attempts == 1 or attempts % 60 == 0 then
         log("waiting for PZLife global bridge functions... attempts=" .. tostring(attempts))
+    end
+
+    if attempts >= max_wait_attempts and not announced_timeout then
+        announced_timeout = true
+        log("bridge still unavailable after attempts=" .. tostring(attempts) .. " status=" .. bridge_status_text())
+        Events.OnTick.Remove(on_tick)
     end
 end
 
