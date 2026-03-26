@@ -1,0 +1,27 @@
+plugins {
+    id 'java-library'
+}
+
+jar {
+    archiveBaseName = 'PirchsPZEngine'
+}
+
+dependencies {
+    implementation project(':PirchsPZBridge')
+
+    compileOnly files("${rootProject.ext.resolvePzCompileDir()}/projectzomboid.jar")
+    compileOnly fileTree("${rootProject.ext.resolvePzCompileDir()}") {
+        include '*.jar'
+    }
+    compileOnly fileTree("${rootProject.ext.resolvePzCompileDir()}/lib") {
+        include '*.jar'
+    }
+
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}

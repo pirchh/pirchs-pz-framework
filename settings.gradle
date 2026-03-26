@@ -1,4 +1,6 @@
 rootProject.name = 'Zomboid'
+
 include 'PirchsPZLoader'
 include 'PirchsPZBridge'
 include 'PirchsPZAgent'
+include 'PirchsPZEngine'

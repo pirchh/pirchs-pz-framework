@@ -15,4 +15,8 @@ public final class LuaExposureHook {
     public static int getExposureAttempts() {
         return LuaExposureBootstrap.getAttempts();
     }
+
+    public static String getExposureStatus() {
+        return LuaExposureBootstrap.describeStatus();
+    }
 }

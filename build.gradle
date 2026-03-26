@@ -67,6 +67,9 @@ def resolveModLibDir() {
     return file("${rootProject.projectDir}/build/install/mod-lib")
 }
 
+
+
+
 tasks.register('verifyEnv') {
     doLast {
         def pzCompileDir = resolvePzCompileDir()
@@ -96,7 +99,7 @@ tasks.register('verifyEnv') {
 }
 
 tasks.register('installToMod') {
-    dependsOn ':PirchsPZLoader:jar', ':PirchsPZBridge:jar', ':PirchsPZAgent:jar'
+    dependsOn ':PirchsPZLoader:jar', ':PirchsPZBridge:jar', ':PirchsPZAgent:jar', ':PirchsPZEngine:jar'
 
     doLast {
         def modLib = resolveModLibDir()
@@ -120,6 +123,15 @@ tasks.register('installToMod') {
             include 'postgresql-*.jar'
         }
 
+        copy {
+            from project(':PirchsPZEngine').tasks.jar.archiveFile
+            into modLib
+        }
+
         println "Jars copied to target folder: ${modLib.absolutePath}"
     }
 }
+
+
+ext.resolvePzCompileDir = { -> resolvePzCompileDir() }
+ext.resolveModLibDir = { -> resolveModLibDir() }
