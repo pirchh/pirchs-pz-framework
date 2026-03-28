@@ -96,7 +96,14 @@ public final class IdentityLifecycleService {
     }
 
     public static IdentityLifecycleState snapshot() {
-        return new IdentityLifecycleState(ready, lastIdentity != null, lastResolvedAccountId, lastIdentity);
+        return new IdentityLifecycleState(
+            ready,
+            lastIdentity != null,
+            lastResolvedAccountId,
+            lastIdentity,
+            lastResolutionSource,
+            lastResolutionAuthoritative
+        );
     }
 
     public static synchronized PlayerIdentity resolveAndPromoteLocalPlayer(int playerNum, IsoPlayer player) {

@@ -37,6 +37,49 @@ public final class PlayerIdentityService {
             .build();
     }
 
+    public static PlayerIdentity requireResolvedLocalIdentity() {
+        if (!IdentityLifecycleService.isReady()) {
+            throw new IllegalStateException("identity lifecycle is not ready");
+        }
+
+        if (!IdentityLifecycleService.hasResolvedLocalAccount()) {
+            throw new IllegalStateException("local account has not been resolved yet");
+        }
+
+        PlayerIdentity identity = IdentityLifecycleService.getLastIdentity();
+        if (identity == null) {
+            throw new IllegalStateException("local identity is missing from lifecycle state");
+        }
+
+        return validate(identity);
+    }
+
+    public static PlayerIdentity getResolvedLocalIdentity() {
+        if (!IdentityLifecycleService.isReady() || !IdentityLifecycleService.hasResolvedLocalAccount()) {
+            return null;
+        }
+
+        PlayerIdentity identity = IdentityLifecycleService.getLastIdentity();
+        if (identity == null) {
+            return null;
+        }
+
+        return validate(identity);
+    }
+
+    public static Integer requireResolvedLocalAccountId() {
+        if (!IdentityLifecycleService.isReady()) {
+            throw new IllegalStateException("identity lifecycle is not ready");
+        }
+
+        Integer accountId = IdentityLifecycleService.getLastResolvedAccountId();
+        if (accountId == null) {
+            throw new IllegalStateException("local account id has not been resolved yet");
+        }
+
+        return accountId;
+    }
+
     public static PlayerIdentity validate(PlayerIdentity identity) {
         if (identity == null) {
             throw new IllegalArgumentException("player identity cannot be null");

@@ -9,6 +9,7 @@ log("PirchsPZDBI_Bridge.lua loaded")
 pz = pz or {}
 pz.bridge = pz.bridge or {}
 pz.bridge.debug = pz.bridge.debug or {}
+pz.bridge.bank = pz.bridge.bank or {}
 
 local MAX_INVOKE_ARGS = 3
 local attempts = 0
@@ -149,7 +150,21 @@ local debug_methods = {
     assignRoleToSelf = "pz.bridge.debug.assignRoleToSelf",
     revokeRoleFromSelf = "pz.bridge.debug.revokeRoleFromSelf",
     hasRole = "pz.bridge.debug.hasRole",
-    listRoles = "pz.bridge.debug.listRoles"
+    listRoles = "pz.bridge.debug.listRoles",
+    getBalance = "pz.bridge.debug.getBalance",
+    depositSelf = "pz.bridge.debug.depositSelf",
+    withdrawSelf = "pz.bridge.debug.withdrawSelf",
+    bankSnapshot = "pz.bridge.debug.bankSnapshot"
+}
+
+local bank_methods = {
+    getBalance = "pz.bridge.bank.getBalance",
+    deposit = "pz.bridge.bank.deposit",
+    withdraw = "pz.bridge.bank.withdraw",
+    getBalanceSelf = "pz.bridge.bank.getBalanceSelf",
+    depositSelf = "pz.bridge.bank.depositSelf",
+    withdrawSelf = "pz.bridge.bank.withdrawSelf",
+    snapshotSelf = "pz.bridge.bank.snapshotSelf"
 }
 
 function pz.bridge.debug.methodName(luaName)
@@ -168,6 +183,12 @@ end
 
 for lua_name, method_name in pairs(debug_methods) do
     pz.bridge.debug[lua_name] = function(...)
+        return pz.bridge.invokeIfPresent(method_name, ...)
+    end
+end
+
+for lua_name, method_name in pairs(bank_methods) do
+    pz.bridge.bank[lua_name] = function(...)
         return pz.bridge.invokeIfPresent(method_name, ...)
     end
 end

@@ -3,6 +3,7 @@ package pirch.pz;
 import java.util.Arrays;
 import java.util.List;
 
+import pirch.pz.bridge.BankBridge;
 import pirch.pz.bridge.DebugBridge;
 import pirch.pz.debug.IdentityDiscoveryWatcher;
 import pirch.pz.debug.IdentityLifecycleBridge;
@@ -42,6 +43,12 @@ public final class BridgeBootstrap {
         "pz.bridge.debug.bridgeSnapshot"
     );
 
+    private static final List<String> REQUIRED_BANK_METHODS = Arrays.asList(
+        "pz.bridge.bank.getBalance",
+        "pz.bridge.bank.deposit",
+        "pz.bridge.bank.withdraw"
+    );
+
     private static volatile boolean initialized;
 
     private BridgeBootstrap() {
@@ -60,6 +67,10 @@ public final class BridgeBootstrap {
 
         // 2. Register all bridge methods
         DebugBridge.register();
+        DebugLog.General.debugln("[PZLIFE][BOOT] DebugBridge registered");
+
+        BankBridge.register();
+        DebugLog.General.debugln("[PZLIFE][BOOT] BankBridge registered");
 
         // 3. Mark identity lifecycle as ready
         IdentityLifecycleBridge.markReady();
@@ -69,7 +80,7 @@ public final class BridgeBootstrap {
         IdentityDiscoveryWatcher.start();
         DebugLog.General.debugln("[PZLIFE][IDENTITY] Java-side identity detector armed");
 
-        // 5. Validate all required bridge methods exist
+        // 5. Validate required bridge methods exist
         validateBridgeSurface();
 
         initialized = true;
@@ -84,10 +95,15 @@ public final class BridgeBootstrap {
     }
 
     private static void validateBridgeSurface() {
-        for (String methodName : REQUIRED_DEBUG_METHODS) {
+        validateMethods("debug", REQUIRED_DEBUG_METHODS);
+        validateMethods("bank", REQUIRED_BANK_METHODS);
+    }
+
+    private static void validateMethods(String groupName, List<String> methods) {
+        for (String methodName : methods) {
             if (!ModuleRegistry.has(methodName)) {
                 throw new IllegalStateException(
-                    "Required bridge method missing after bootstrap: " + methodName
+                    "Required " + groupName + " bridge method missing after bootstrap: " + methodName
                 );
             }
         }
