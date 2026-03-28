@@ -13,7 +13,7 @@ local FONT_HGT_MEDIUM = getTextManager():getFontHeight(FONT_MEDIUM)
 local HOTKEY = (Keyboard and Keyboard.KEY_F6) or 64
 local MENU = nil
 
-local TAB_ORDER = { "Identity", "Nodes", "Permissions", "Roles", "Utility" }
+local TAB_ORDER = { "Identity", "Nodes", "Permissions", "Roles", "Banking", "Utility" }
 
 local TAB_ACTIONS = {
     Identity = {
@@ -42,6 +42,12 @@ local TAB_ACTIONS = {
         { id = "REVOKE_ROLE", label = "Revoke Role" },
         { id = "HAS_ROLE", label = "Has Role" },
         { id = "LIST_ROLES", label = "List Roles" },
+    },
+    Banking = {
+        { id = "BANK_SNAPSHOT", label = "Bank Snapshot" },
+        { id = "BANK_GET_BALANCE", label = "Get Balance" },
+        { id = "BANK_DEPOSIT", label = "Deposit Amount" },
+        { id = "BANK_WITHDRAW", label = "Withdraw Amount" },
     },
     Utility = {
         { id = "BRIDGE_SNAPSHOT", label = "Bridge Snapshot" },
@@ -75,6 +81,10 @@ local METHOD = {
     LIST_ROLES = "pz.bridge.debug.listRoles",
     LIST_METHODS = "pz.bridge.debug.listAvailableMethods",
     BRIDGE_SNAPSHOT = "pz.bridge.debug.bridgeSnapshot",
+    BANK_SNAPSHOT = "pz.bridge.debug.bankSnapshot",
+    BANK_GET_BALANCE = "pz.bridge.debug.getBalance",
+    BANK_DEPOSIT = "pz.bridge.debug.depositSelf",
+    BANK_WITHDRAW = "pz.bridge.debug.withdrawSelf",
 }
 
 PirchsPZDBIDebugMenu = ISPanel:derive("PirchsPZDBIDebugMenu")
@@ -98,6 +108,19 @@ local function safeText(widget, fallback)
         end
     end
     return fallback
+end
+
+local function safeAmount(widget, fallback)
+    local raw = safeText(widget, tostring(fallback or "100"))
+    local amount = tonumber(raw)
+    if amount == nil then
+        return nil, "amount must be numeric"
+    end
+    amount = math.floor(amount)
+    if amount <= 0 then
+        return nil, "amount must be greater than zero"
+    end
+    return tostring(amount), nil
 end
 
 local function hasGlobalBridge()
@@ -200,6 +223,7 @@ function PirchsPZDBIDebugMenu:new(x, y, w, h)
     o.nodeTypeEntry = nil
     o.permissionEntry = nil
     o.roleEntry = nil
+    o.amountEntry = nil
 
     o.sidebarRect = {}
     o.formRect = {}
@@ -346,6 +370,7 @@ function PirchsPZDBIDebugMenu:createInputRow(key, labelText, defaultValue)
     if key == "nodeType" then self.nodeTypeEntry = entry end
     if key == "permission" then self.permissionEntry = entry end
     if key == "role" then self.roleEntry = entry end
+    if key == "amount" then self.amountEntry = entry end
 end
 
 function PirchsPZDBIDebugMenu:createActionButtons()
@@ -378,6 +403,7 @@ function PirchsPZDBIDebugMenu:createChildren()
     self:createInputRow("nodeType", "Node Type", "node")
     self:createInputRow("permission", "Permission", "debug.use")
     self:createInputRow("role", "Role", "owner")
+    self:createInputRow("amount", "Bank Amount", "100")
     self:createActionButtons()
     self:updateBridgeStatus()
     self.childrenBuilt = true
@@ -408,7 +434,7 @@ function PirchsPZDBIDebugMenu:updateLayout()
     self.sidebarRect.x = pad
     self.sidebarRect.y = contentY
     self.sidebarRect.w = sidebarW
-    self.sidebarRect.h = 232
+    self.sidebarRect.h = 270
 
     self.formRect.x = pad
     self.formRect.y = self.sidebarRect.y + self.sidebarRect.h + gap
@@ -503,6 +529,7 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
     local nodeType = safeText(self.nodeTypeEntry, "node")
     local permission = safeText(self.permissionEntry, "debug.use")
     local role = safeText(self.roleEntry, "owner")
+    local amountValue, amountErr = safeAmount(self.amountEntry, "100")
 
     if button.internal == "READY" then
         self:invokeById("READY")
@@ -542,6 +569,22 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
         self:invokeById("HAS_ROLE", role)
     elseif button.internal == "LIST_ROLES" then
         self:invokeById("LIST_ROLES")
+    elseif button.internal == "BANK_SNAPSHOT" then
+        self:invokeById("BANK_SNAPSHOT")
+    elseif button.internal == "BANK_GET_BALANCE" then
+        self:invokeById("BANK_GET_BALANCE")
+    elseif button.internal == "BANK_DEPOSIT" then
+        if amountErr then
+            self:finishCall("BANK_DEPOSIT", false, amountErr)
+            return
+        end
+        self:invokeById("BANK_DEPOSIT", amountValue)
+    elseif button.internal == "BANK_WITHDRAW" then
+        if amountErr then
+            self:finishCall("BANK_WITHDRAW", false, amountErr)
+            return
+        end
+        self:invokeById("BANK_WITHDRAW", amountValue)
     elseif button.internal == "LIST_METHODS" then
         self:invokeById("LIST_METHODS")
     elseif button.internal == "BRIDGE_SNAPSHOT" then
@@ -554,7 +597,7 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
             self:pushLine("bridge status refreshed: PZLife global bridge unavailable")
         end
     elseif button.internal == "LOG_DEFAULTS" then
-        self:pushLine("nodeKey=" .. nodeKey .. " | nodeType=" .. nodeType .. " | permission=" .. permission .. " | role=" .. role)
+        self:pushLine("nodeKey=" .. nodeKey .. " | nodeType=" .. nodeType .. " | permission=" .. permission .. " | role=" .. role .. " | amount=" .. tostring(amountValue or "100"))
     elseif button.internal == "CLEAR_LOG" then
         self.lines = {}
         self.lastResult = "idle"
@@ -651,8 +694,8 @@ local function createMenu()
     ui:setVisible(true)
     ui:updateWrappedResult("idle")
     ui:pushLine("debug menu opened")
-    ui:pushLine("layout pass: parent instantiate first + child attach after instantiate")
-    ui:pushLine("nodeKey=test:node_debug_1 | nodeType=node | permission=debug.use | role=owner")
+    ui:pushLine("layout pass: banking tab added + parent instantiate first + child attach after instantiate")
+    ui:pushLine("nodeKey=test:node_debug_1 | nodeType=node | permission=debug.use | role=owner | amount=100")
     return ui
 end
 
