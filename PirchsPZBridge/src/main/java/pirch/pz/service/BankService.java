@@ -21,7 +21,6 @@ public final class BankService {
 
     public static int deposit(PlayerIdentity identity, int amount) {
         PlayerIdentityService.validate(identity);
-        validateAmount(amount);
         return PostgresAccountRepository.deposit(identity, amount);
     }
 
@@ -31,23 +30,94 @@ public final class BankService {
 
     public static int withdraw(PlayerIdentity identity, int amount) {
         PlayerIdentityService.validate(identity);
-        validateAmount(amount);
         return PostgresAccountRepository.withdraw(identity, amount);
-    }
-
-    public static BankSnapshot snapshot(PlayerIdentity identity, boolean localIdentity, String source) {
-        PlayerIdentityService.validate(identity);
-        return new BankSnapshot(identity, getBalance(identity), localIdentity, source);
     }
 
     public static BankSnapshot localSnapshot() {
         PlayerIdentity identity = LocalPlayerIdentityResolver.requireLocalIdentity();
-        return snapshot(identity, true, "local-resolver");
+        return new BankSnapshot(
+            identity,
+            getBalance(identity),
+            true,
+            LocalPlayerIdentityResolver.getResolutionSource()
+        );
     }
 
-    private static void validateAmount(int amount) {
+    public static int countCarriedMoney() {
+        LocalPlayerIdentityResolver.requireLocalIdentity();
+        return CashInventoryService.countLocalPlayerMoney();
+    }
+
+    public static BankTransactionResult depositCarriedMoney(PlayerIdentity identity, int amount) {
+        PlayerIdentityService.validate(identity);
+
+        int balanceBefore = getBalance(identity);
+        int carriedBefore = CashInventoryService.countLocalPlayerMoney();
         if (amount <= 0) {
-            throw new IllegalArgumentException("amount must be greater than zero");
+            throw new IllegalArgumentException("Deposit amount must be greater than 0");
         }
+        if (carriedBefore < amount) {
+            throw new IllegalStateException("You tried to deposit more money than you are carrying");
+        }
+
+        int processed = CashInventoryService.removeLocalPlayerMoney(amount);
+        int balanceAfter = PostgresAccountRepository.deposit(identity, processed);
+        int carriedAfter = CashInventoryService.countLocalPlayerMoney();
+
+        return new BankTransactionResult(
+            "depositCarriedMoney",
+            amount,
+            processed,
+            balanceBefore,
+            balanceAfter,
+            carriedBefore,
+            carriedAfter,
+            true,
+            null
+        );
+    }
+
+    public static BankTransactionResult depositAllCarriedMoney(PlayerIdentity identity) {
+        PlayerIdentityService.validate(identity);
+
+        int carriedBefore = CashInventoryService.countLocalPlayerMoney();
+        if (carriedBefore <= 0) {
+            throw new IllegalStateException("You are not carrying any money");
+        }
+
+        return depositCarriedMoney(identity, carriedBefore);
+    }
+
+    public static BankTransactionResult withdrawCashToInventory(PlayerIdentity identity, int amount) {
+        PlayerIdentityService.validate(identity);
+
+        int balanceBefore = getBalance(identity);
+        int carriedBefore = CashInventoryService.countLocalPlayerMoney();
+        if (amount <= 0) {
+            throw new IllegalArgumentException("Withdraw amount must be greater than 0");
+        }
+        if (balanceBefore < amount) {
+            throw new IllegalStateException("Insufficient funds");
+        }
+
+        int granted = CashInventoryService.giveLocalPlayerMoney(amount);
+        if (granted != amount) {
+            throw new IllegalStateException("Unable to place withdrawn cash in inventory");
+        }
+
+        int balanceAfter = PostgresAccountRepository.withdraw(identity, granted);
+        int carriedAfter = CashInventoryService.countLocalPlayerMoney();
+
+        return new BankTransactionResult(
+            "withdrawCashToInventory",
+            amount,
+            granted,
+            balanceBefore,
+            balanceAfter,
+            carriedBefore,
+            carriedAfter,
+            true,
+            null
+        );
     }
 }

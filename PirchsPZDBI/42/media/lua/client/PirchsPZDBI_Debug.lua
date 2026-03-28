@@ -44,10 +44,20 @@ local TAB_ACTIONS = {
         { id = "LIST_ROLES", label = "List Roles" },
     },
     Banking = {
+        { id = "GET_BALANCE", label = "Get Balance" },
         { id = "BANK_SNAPSHOT", label = "Bank Snapshot" },
-        { id = "BANK_GET_BALANCE", label = "Get Balance" },
-        { id = "BANK_DEPOSIT", label = "Deposit Amount" },
-        { id = "BANK_WITHDRAW", label = "Withdraw Amount" },
+        { id = "GET_CARRIED_MONEY", label = "Get Carried Cash" },
+        { id = "DEPOSIT_TYPED", label = "Deposit Typed" },
+        { id = "WITHDRAW_TYPED", label = "Withdraw Typed" },
+        { id = "DEPOSIT_10", label = "Deposit 10" },
+        { id = "DEPOSIT_50", label = "Deposit 50" },
+        { id = "DEPOSIT_100", label = "Deposit 100" },
+        { id = "DEPOSIT_1000", label = "Deposit 1000" },
+        { id = "DEPOSIT_ALL", label = "Deposit All" },
+        { id = "WITHDRAW_10", label = "Withdraw 10" },
+        { id = "WITHDRAW_50", label = "Withdraw 50" },
+        { id = "WITHDRAW_100", label = "Withdraw 100" },
+        { id = "WITHDRAW_1000", label = "Withdraw 1000" },
     },
     Utility = {
         { id = "BRIDGE_SNAPSHOT", label = "Bridge Snapshot" },
@@ -81,10 +91,20 @@ local METHOD = {
     LIST_ROLES = "pz.bridge.debug.listRoles",
     LIST_METHODS = "pz.bridge.debug.listAvailableMethods",
     BRIDGE_SNAPSHOT = "pz.bridge.debug.bridgeSnapshot",
+    GET_BALANCE = "pz.bridge.debug.getBalance",
     BANK_SNAPSHOT = "pz.bridge.debug.bankSnapshot",
-    BANK_GET_BALANCE = "pz.bridge.debug.getBalance",
-    BANK_DEPOSIT = "pz.bridge.debug.depositSelf",
-    BANK_WITHDRAW = "pz.bridge.debug.withdrawSelf",
+    GET_CARRIED_MONEY = "pz.bridge.debug.getCarriedMoney",
+    DEPOSIT_TYPED = "pz.bridge.debug.depositCarriedMoneySelf",
+    WITHDRAW_TYPED = "pz.bridge.debug.withdrawCashToInventorySelf",
+    DEPOSIT_ALL = "pz.bridge.debug.depositAllCarriedMoneySelf",
+    DEPOSIT_10 = "pz.bridge.debug.depositCarriedMoneySelf",
+    DEPOSIT_50 = "pz.bridge.debug.depositCarriedMoneySelf",
+    DEPOSIT_100 = "pz.bridge.debug.depositCarriedMoneySelf",
+    DEPOSIT_1000 = "pz.bridge.debug.depositCarriedMoneySelf",
+    WITHDRAW_10 = "pz.bridge.debug.withdrawCashToInventorySelf",
+    WITHDRAW_50 = "pz.bridge.debug.withdrawCashToInventorySelf",
+    WITHDRAW_100 = "pz.bridge.debug.withdrawCashToInventorySelf",
+    WITHDRAW_1000 = "pz.bridge.debug.withdrawCashToInventorySelf",
 }
 
 PirchsPZDBIDebugMenu = ISPanel:derive("PirchsPZDBIDebugMenu")
@@ -110,17 +130,17 @@ local function safeText(widget, fallback)
     return fallback
 end
 
-local function safeAmount(widget, fallback)
+local function parseAmount(widget, fallback)
     local raw = safeText(widget, tostring(fallback or "100"))
     local amount = tonumber(raw)
     if amount == nil then
-        return nil, "amount must be numeric"
+        return nil, "Bank amount must be a valid integer"
     end
     amount = math.floor(amount)
     if amount <= 0 then
-        return nil, "amount must be greater than zero"
+        return nil, "Bank amount must be greater than 0"
     end
-    return tostring(amount), nil
+    return amount, nil
 end
 
 local function hasGlobalBridge()
@@ -142,15 +162,6 @@ local function getBridgeStatus()
         hasInvoke2 = type(pzlife_invoke2) == "function",
         hasInvoke3 = type(pzlife_invoke3) == "function",
     }
-
-    if type(pzlife_bridge_status) == "function" then
-        local ok, value = pcall(function()
-            return pzlife_bridge_status()
-        end)
-        status.bridgeStatusCallOk = ok
-        status.bridgeStatusCallValue = value
-    end
-
     return status
 end
 
@@ -163,24 +174,16 @@ local function invokeBridgeMethod(methodName, ...)
     local ok, result
 
     if argc == 0 then
-        ok, result = pcall(function()
-            return pzlife_invoke0(methodName)
-        end)
+        ok, result = pcall(function() return pzlife_invoke0(methodName) end)
     elseif argc == 1 then
         local a1 = ...
-        ok, result = pcall(function()
-            return pzlife_invoke1(methodName, a1)
-        end)
+        ok, result = pcall(function() return pzlife_invoke1(methodName, a1) end)
     elseif argc == 2 then
         local a1, a2 = ...
-        ok, result = pcall(function()
-            return pzlife_invoke2(methodName, a1, a2)
-        end)
+        ok, result = pcall(function() return pzlife_invoke2(methodName, a1, a2) end)
     elseif argc == 3 then
         local a1, a2, a3 = ...
-        ok, result = pcall(function()
-            return pzlife_invoke3(methodName, a1, a2, a3)
-        end)
+        ok, result = pcall(function() return pzlife_invoke3(methodName, a1, a2, a3) end)
     else
         return false, nil, "Too many arguments for debug bridge: " .. tostring(argc)
     end
@@ -209,21 +212,20 @@ function PirchsPZDBIDebugMenu:new(x, y, w, h)
     o.tabButtons = {}
     o.actionButtons = {}
     o.formRows = {}
-    o.bridgeStatusSnapshot = {}
 
     o.titleBarHeight = 56
-    o.sidebarWidth = 240
+    o.sidebarWidth = 260
     o.sectionGap = 14
     o.pad = 14
     o.minActionHeight = 170
-    o.maxActionHeight = 290
+    o.maxActionHeight = 340
     o.resultHeight = 150
 
     o.nodeKeyEntry = nil
     o.nodeTypeEntry = nil
     o.permissionEntry = nil
     o.roleEntry = nil
-    o.amountEntry = nil
+    o.bankAmountEntry = nil
 
     o.sidebarRect = {}
     o.formRect = {}
@@ -281,9 +283,8 @@ function PirchsPZDBIDebugMenu:updateWrappedResult(text)
 end
 
 function PirchsPZDBIDebugMenu:updateBridgeStatus()
-    self.bridgeStatusSnapshot = getBridgeStatus()
-
-    if self.bridgeStatusSnapshot.present then
+    local snapshot = getBridgeStatus()
+    if snapshot.present then
         self.statusText = "READY"
         self.statusColor = { r = 0.35, g = 0.95, b = 0.55, a = 1.0 }
     else
@@ -370,7 +371,7 @@ function PirchsPZDBIDebugMenu:createInputRow(key, labelText, defaultValue)
     if key == "nodeType" then self.nodeTypeEntry = entry end
     if key == "permission" then self.permissionEntry = entry end
     if key == "role" then self.roleEntry = entry end
-    if key == "amount" then self.amountEntry = entry end
+    if key == "bankAmount" then self.bankAmountEntry = entry end
 end
 
 function PirchsPZDBIDebugMenu:createActionButtons()
@@ -403,7 +404,7 @@ function PirchsPZDBIDebugMenu:createChildren()
     self:createInputRow("nodeType", "Node Type", "node")
     self:createInputRow("permission", "Permission", "debug.use")
     self:createInputRow("role", "Role", "owner")
-    self:createInputRow("amount", "Bank Amount", "100")
+    self:createInputRow("bankAmount", "Bank Amount", "100")
     self:createActionButtons()
     self:updateBridgeStatus()
     self.childrenBuilt = true
@@ -411,13 +412,8 @@ end
 
 function PirchsPZDBIDebugMenu:getActionPanelHeight()
     local buttons = self.actionButtons[self.activeTab] or {}
-    local buttonCount = #buttons
-    local rows = math.max(1, math.ceil(buttonCount / 2))
-    local headerHeight = 44
-    local buttonHeight = 32
-    local buttonGapY = 10
-    local bodyHeight = rows * buttonHeight + math.max(0, rows - 1) * buttonGapY
-    local total = headerHeight + 12 + bodyHeight + 12
+    local rows = math.max(1, math.ceil(#buttons / 2))
+    local total = 56 + (rows * 32) + math.max(0, rows - 1) * 10 + 24
     return math.max(self.minActionHeight, math.min(self.maxActionHeight, total))
 end
 
@@ -434,7 +430,7 @@ function PirchsPZDBIDebugMenu:updateLayout()
     self.sidebarRect.x = pad
     self.sidebarRect.y = contentY
     self.sidebarRect.w = sidebarW
-    self.sidebarRect.h = 270
+    self.sidebarRect.h = 210
 
     self.formRect.x = pad
     self.formRect.y = self.sidebarRect.y + self.sidebarRect.h + gap
@@ -457,10 +453,10 @@ function PirchsPZDBIDebugMenu:updateLayout()
     self.logRect.h = self.height - self.logRect.y - pad
 
     local tabX = self.sidebarRect.x + 10
-    local tabY = self.sidebarRect.y + 30
+    local tabY = self.sidebarRect.y + 28
     local tabW = self.sidebarRect.w - 20
-    local tabH = 30
-    local tabGap = 8
+    local tabH = 26
+    local tabGap = 6
 
     for i = 1, #self.tabButtons do
         local btn = self.tabButtons[i]
@@ -470,13 +466,13 @@ function PirchsPZDBIDebugMenu:updateLayout()
         btn:setHeight(tabH)
     end
 
-    local rowStartY = self.formRect.y + 34
+    local rowStartY = self.formRect.y + 32
     local labelX = self.formRect.x + 10
     local entryX = self.formRect.x + 10
     local entryW = self.formRect.w - 20
-    local labelToEntryGap = 8
-    local rowGap = 18
-    local entryH = 24
+    local labelToEntryGap = 6
+    local rowGap = 10
+    local entryH = 22
     local cursorY = rowStartY
 
     for i = 1, #self.formRows do
@@ -529,7 +525,7 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
     local nodeType = safeText(self.nodeTypeEntry, "node")
     local permission = safeText(self.permissionEntry, "debug.use")
     local role = safeText(self.roleEntry, "owner")
-    local amountValue, amountErr = safeAmount(self.amountEntry, "100")
+    local amount, amountErr = parseAmount(self.bankAmountEntry, "100")
 
     if button.internal == "READY" then
         self:invokeById("READY")
@@ -569,22 +565,42 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
         self:invokeById("HAS_ROLE", role)
     elseif button.internal == "LIST_ROLES" then
         self:invokeById("LIST_ROLES")
+    elseif button.internal == "GET_BALANCE" then
+        self:invokeById("GET_BALANCE")
     elseif button.internal == "BANK_SNAPSHOT" then
         self:invokeById("BANK_SNAPSHOT")
-    elseif button.internal == "BANK_GET_BALANCE" then
-        self:invokeById("BANK_GET_BALANCE")
-    elseif button.internal == "BANK_DEPOSIT" then
-        if amountErr then
-            self:finishCall("BANK_DEPOSIT", false, amountErr)
+    elseif button.internal == "GET_CARRIED_MONEY" then
+        self:invokeById("GET_CARRIED_MONEY")
+    elseif button.internal == "DEPOSIT_TYPED" then
+        if not amount then
+            self:finishCall("bank amount", false, amountErr)
             return
         end
-        self:invokeById("BANK_DEPOSIT", amountValue)
-    elseif button.internal == "BANK_WITHDRAW" then
-        if amountErr then
-            self:finishCall("BANK_WITHDRAW", false, amountErr)
+        self:invokeById("DEPOSIT_TYPED", tostring(amount))
+    elseif button.internal == "WITHDRAW_TYPED" then
+        if not amount then
+            self:finishCall("bank amount", false, amountErr)
             return
         end
-        self:invokeById("BANK_WITHDRAW", amountValue)
+        self:invokeById("WITHDRAW_TYPED", tostring(amount))
+    elseif button.internal == "DEPOSIT_ALL" then
+        self:invokeById("DEPOSIT_ALL")
+    elseif button.internal == "DEPOSIT_10" then
+        self:invokeById("DEPOSIT_10", "10")
+    elseif button.internal == "DEPOSIT_50" then
+        self:invokeById("DEPOSIT_50", "50")
+    elseif button.internal == "DEPOSIT_100" then
+        self:invokeById("DEPOSIT_100", "100")
+    elseif button.internal == "DEPOSIT_1000" then
+        self:invokeById("DEPOSIT_1000", "1000")
+    elseif button.internal == "WITHDRAW_10" then
+        self:invokeById("WITHDRAW_10", "10")
+    elseif button.internal == "WITHDRAW_50" then
+        self:invokeById("WITHDRAW_50", "50")
+    elseif button.internal == "WITHDRAW_100" then
+        self:invokeById("WITHDRAW_100", "100")
+    elseif button.internal == "WITHDRAW_1000" then
+        self:invokeById("WITHDRAW_1000", "1000")
     elseif button.internal == "LIST_METHODS" then
         self:invokeById("LIST_METHODS")
     elseif button.internal == "BRIDGE_SNAPSHOT" then
@@ -597,7 +613,7 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
             self:pushLine("bridge status refreshed: PZLife global bridge unavailable")
         end
     elseif button.internal == "LOG_DEFAULTS" then
-        self:pushLine("nodeKey=" .. nodeKey .. " | nodeType=" .. nodeType .. " | permission=" .. permission .. " | role=" .. role .. " | amount=" .. tostring(amountValue or "100"))
+        self:pushLine("nodeKey=" .. nodeKey .. " | nodeType=" .. nodeType .. " | permission=" .. permission .. " | role=" .. role .. " | bankAmount=" .. safeText(self.bankAmountEntry, "100"))
     elseif button.internal == "CLEAR_LOG" then
         self.lines = {}
         self.lastResult = "idle"
@@ -660,13 +676,7 @@ function PirchsPZDBIDebugMenu:prerender()
     self:drawRectBorder(self.logRect.x, self.logRect.y, self.logRect.w, self.logRect.h, 0.85, 0.15, 0.25, 0.35)
     self:drawText("Activity Log", self.logRect.x + 12, self.logRect.y + 8, 0.88, 0.95, 1.0, 1.0, FONT_MEDIUM)
 
-    local bridgeDetail = "PZLife global bridge unavailable"
-    if self.statusText == "READY" then
-        bridgeDetail = "PZLife global bridge attached"
-    end
-    self:drawText(bridgeDetail, self.logRect.x + 12, self.logRect.y + 30, 0.55, 0.85, 0.95, 1.0, FONT_SMALL)
-
-    local y = self.logRect.y + 30 + FONT_HGT_SMALL + 8
+    local y = self.logRect.y + 30
     local availableHeight = self.logRect.h - (y - self.logRect.y) - 8
     local maxLines = math.max(4, math.floor(availableHeight / (FONT_HGT_SMALL + 2)))
     local startIndex = math.max(1, #self.lines - maxLines + 1)
@@ -681,8 +691,8 @@ function PirchsPZDBIDebugMenu:prerender()
 end
 
 local function createMenu()
-    local width = 1080
-    local height = 760
+    local width = 1180
+    local height = 780
     local x = math.max(20, math.floor((getCore():getScreenWidth() - width) / 2))
     local y = math.max(20, math.floor((getCore():getScreenHeight() - height) / 2))
     local ui = PirchsPZDBIDebugMenu:new(x, y, width, height)
@@ -694,8 +704,7 @@ local function createMenu()
     ui:setVisible(true)
     ui:updateWrappedResult("idle")
     ui:pushLine("debug menu opened")
-    ui:pushLine("layout pass: banking tab added + parent instantiate first + child attach after instantiate")
-    ui:pushLine("nodeKey=test:node_debug_1 | nodeType=node | permission=debug.use | role=owner | amount=100")
+    ui:pushLine("banking pass: carried cash + typed deposit/withdraw + quick amount buttons")
     return ui
 end
 
@@ -728,14 +737,7 @@ local function onGameStart()
     if hasGlobalBridge() then
         logLine("PZLife global bridge ready")
     else
-        local status = getBridgeStatus()
-        logLine("PZLife global bridge pending: present=" .. tostring(status.present)
-            .. " hasPzlife=" .. tostring(status.hasPzlife)
-            .. " hasHas=" .. tostring(status.hasHas)
-            .. " hasInvoke0=" .. tostring(status.hasInvoke0)
-            .. " hasInvoke1=" .. tostring(status.hasInvoke1)
-            .. " hasInvoke2=" .. tostring(status.hasInvoke2)
-            .. " hasInvoke3=" .. tostring(status.hasInvoke3))
+        logLine("PZLife global bridge pending")
     end
 end
 
