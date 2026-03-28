@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import pirch.pz.debug.IdentityLifecycleBridge;
 import pirch.pz.service.AuthSelfTestService;
 import pirch.pz.service.IdentityLifecycleService;
 import pirch.pz.service.OwnershipService;
@@ -26,32 +27,36 @@ public final class DebugBridge {
             return;
         }
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.isLocalIdentityReady")
-                .description("Returns true when the local account identity has been resolved and debug methods can run")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.isLocalIdentityReady",
+            "Returns true when the local account identity has been resolved and debug methods can run",
+            0,
+            args -> BridgeResult.ok(isLocalIdentityReady())
+        );
+        registerMethod(
+            "pz.bridge.identity.isReady",
+            "Stable alias for local identity readiness",
+            0,
             args -> BridgeResult.ok(isLocalIdentityReady())
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.selfTestNow")
-                .description("Runs the auth self-test immediately for the resolved local account")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.selfTestNow",
+            "Runs the auth self-test immediately for the resolved local account",
+            0,
             args -> BridgeResult.ok(AuthSelfTestService.runNow())
         );
-
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.selfTestStatus")
-                .description("Returns the last auth self-test status snapshot")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.selfTestStatus",
+            "Returns the last auth self-test status snapshot",
+            0,
             args -> BridgeResult.ok(AuthSelfTestService.getStatus())
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.runSmokeSuite")
-                .description("Runs a focused manual smoke suite for the resolved local account")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.runSmokeSuite",
+            "Runs a focused manual smoke suite for the resolved local account",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -66,21 +71,46 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.resetLifecycle")
-                .description("Resets local lifecycle state and auth self-test state for debug retesting")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.resetLifecycle",
+            "Resets local lifecycle state and auth self-test state for debug retesting",
+            0,
             args -> {
                 IdentityLifecycleService.resetLocalResolution("manual debug reset");
                 return BridgeResult.ok(snapshot("manual debug reset"));
             }
         );
+        registerMethod(
+            "pz.bridge.identity.reset",
+            "Stable alias for lifecycle reset",
+            0,
+            args -> {
+                IdentityLifecycleService.resetLocalResolution("manual stable reset");
+                return BridgeResult.ok(snapshot("manual stable reset"));
+            }
+        );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.claimNode")
-                .description("Claims a node for the resolved local account")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.claimNode",
+            "Claims a node for the resolved local account",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String nodeKey = String.valueOf(args[0]).trim();
+                    String nodeType = args.length >= 2 && args[1] != null
+                        ? String.valueOf(args[1]).trim()
+                        : "node";
+                    return BridgeResult.ok(OwnershipService.claimNode(identity, nodeKey, nodeType));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.ownership.claimNode",
+            "Stable alias for claiming a node for the resolved local account",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -95,11 +125,24 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.releaseNode")
-                .description("Releases a node for the resolved local account")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.releaseNode",
+            "Releases a node for the resolved local account",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String nodeKey = String.valueOf(args[0]).trim();
+                    return BridgeResult.ok(OwnershipService.releaseNode(identity, nodeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.ownership.releaseNode",
+            "Stable alias for releasing a node",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -111,11 +154,23 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.getNodeOwner")
-                .description("Returns the current owner of a node")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.getNodeOwner",
+            "Returns the current owner of a node",
+            1,
+            args -> {
+                try {
+                    String nodeKey = String.valueOf(args[0]).trim();
+                    return BridgeResult.ok(OwnershipService.getNodeOwner(nodeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.ownership.getNodeOwner",
+            "Stable alias for getting current node owner",
+            1,
             args -> {
                 try {
                     String nodeKey = String.valueOf(args[0]).trim();
@@ -126,10 +181,22 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.listOwnedNodes")
-                .description("Lists nodes owned by the resolved local account")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.listOwnedNodes",
+            "Lists nodes owned by the resolved local account",
+            0,
+            args -> {
+                try {
+                    return BridgeResult.ok(OwnershipService.listOwnedNodes(requireLocalIdentity()));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.ownership.listMine",
+            "Stable alias for listing nodes owned by the resolved local account",
+            0,
             args -> {
                 try {
                     return BridgeResult.ok(OwnershipService.listOwnedNodes(requireLocalIdentity()));
@@ -139,11 +206,26 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.grantPermissionToSelf")
-                .description("Grants a global or scoped permission to the resolved local account using itself as actor")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.grantPermissionToSelf",
+            "Grants a global or scoped permission to the resolved local account using itself as actor",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String permissionKey = String.valueOf(args[0]).trim();
+                    String scopeType = args.length >= 2 && args[1] != null ? String.valueOf(args[1]).trim() : null;
+                    String scopeKey = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : null;
+                    return BridgeResult.ok(PermissionService.grant(identity, identity, permissionKey, scopeType, scopeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.permission.grantToSelf",
+            "Stable alias for granting a permission to the resolved local account",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -157,11 +239,26 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.revokePermissionFromSelf")
-                .description("Revokes a global or scoped permission from the resolved local account using itself as actor")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.revokePermissionFromSelf",
+            "Revokes a global or scoped permission from the resolved local account using itself as actor",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String permissionKey = String.valueOf(args[0]).trim();
+                    String scopeType = args.length >= 2 && args[1] != null ? String.valueOf(args[1]).trim() : null;
+                    String scopeKey = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : null;
+                    return BridgeResult.ok(PermissionService.revoke(identity, identity, permissionKey, scopeType, scopeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.permission.revokeFromSelf",
+            "Stable alias for revoking a permission from the resolved local account",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -175,11 +272,26 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.hasPermission")
-                .description("Checks whether the resolved local account has a permission")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.hasPermission",
+            "Checks whether the resolved local account has a permission",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String permissionKey = String.valueOf(args[0]).trim();
+                    String scopeType = args.length >= 2 && args[1] != null ? String.valueOf(args[1]).trim() : null;
+                    String scopeKey = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : null;
+                    return BridgeResult.ok(PermissionService.has(identity, permissionKey, scopeType, scopeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.permission.has",
+            "Stable alias for checking whether the resolved local account has a permission",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -193,11 +305,26 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.explainPermission")
-                .description("Explains permission resolution for the resolved local account")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.explainPermission",
+            "Explains permission resolution for the resolved local account",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String permissionKey = String.valueOf(args[0]).trim();
+                    String scopeType = args.length >= 2 && args[1] != null ? String.valueOf(args[1]).trim() : null;
+                    String scopeKey = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : null;
+                    return BridgeResult.ok(PermissionService.explain(identity, permissionKey, scopeType, scopeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.permission.explain",
+            "Stable alias for permission resolution explanation",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -211,10 +338,22 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.listPermissions")
-                .description("Lists permissions for the resolved local account")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.listPermissions",
+            "Lists permissions for the resolved local account",
+            0,
+            args -> {
+                try {
+                    return BridgeResult.ok(PermissionService.list(requireLocalIdentity()));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.permission.list",
+            "Stable alias for listing permissions for the resolved local account",
+            0,
             args -> {
                 try {
                     return BridgeResult.ok(PermissionService.list(requireLocalIdentity()));
@@ -224,11 +363,26 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.assignRoleToSelf")
-                .description("Assigns a global or scoped role to the resolved local account using itself as actor")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.assignRoleToSelf",
+            "Assigns a global or scoped role to the resolved local account using itself as actor",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String roleKey = String.valueOf(args[0]).trim();
+                    String scopeType = args.length >= 2 && args[1] != null ? String.valueOf(args[1]).trim() : null;
+                    String scopeKey = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : null;
+                    return BridgeResult.ok(RoleService.assign(identity, identity, roleKey, scopeType, scopeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.role.assignToSelf",
+            "Stable alias for assigning a role to the resolved local account",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -242,11 +396,26 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.revokeRoleFromSelf")
-                .description("Revokes a global or scoped role from the resolved local account using itself as actor")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.revokeRoleFromSelf",
+            "Revokes a global or scoped role from the resolved local account using itself as actor",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String roleKey = String.valueOf(args[0]).trim();
+                    String scopeType = args.length >= 2 && args[1] != null ? String.valueOf(args[1]).trim() : null;
+                    String scopeKey = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : null;
+                    return BridgeResult.ok(RoleService.revoke(identity, identity, roleKey, scopeType, scopeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.role.revokeFromSelf",
+            "Stable alias for revoking a role from the resolved local account",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -260,11 +429,26 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.hasRole")
-                .description("Checks whether the resolved local account has a role")
-                .minArgCount(1)
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.hasRole",
+            "Checks whether the resolved local account has a role",
+            1,
+            args -> {
+                try {
+                    PlayerIdentity identity = requireLocalIdentity();
+                    String roleKey = String.valueOf(args[0]).trim();
+                    String scopeType = args.length >= 2 && args[1] != null ? String.valueOf(args[1]).trim() : null;
+                    String scopeKey = args.length >= 3 && args[2] != null ? String.valueOf(args[2]).trim() : null;
+                    return BridgeResult.ok(RoleService.has(identity, roleKey, scopeType, scopeKey));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.role.has",
+            "Stable alias for checking whether the resolved local account has a role",
+            1,
             args -> {
                 try {
                     PlayerIdentity identity = requireLocalIdentity();
@@ -278,10 +462,22 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.listRoles")
-                .description("Lists roles for the resolved local account")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.listRoles",
+            "Lists roles for the resolved local account",
+            0,
+            args -> {
+                try {
+                    return BridgeResult.ok(RoleService.list(requireLocalIdentity()));
+                } catch (Exception e) {
+                    return BridgeResult.fail(e.getMessage());
+                }
+            }
+        );
+        registerMethod(
+            "pz.bridge.role.list",
+            "Stable alias for listing roles for the resolved local account",
+            0,
             args -> {
                 try {
                     return BridgeResult.ok(RoleService.list(requireLocalIdentity()));
@@ -291,28 +487,62 @@ public final class DebugBridge {
             }
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.localSnapshot")
-                .description("Returns the currently resolved local identity and auth self-test snapshot")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.localSnapshot",
+            "Returns the currently resolved local identity and auth self-test snapshot",
+            0,
             args -> BridgeResult.ok(snapshot("manual snapshot"))
         );
+        registerMethod(
+            "pz.bridge.identity.snapshot",
+            "Stable alias for local identity snapshot",
+            0,
+            args -> BridgeResult.ok(snapshot("manual stable snapshot"))
+        );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.listAvailableMethods")
-                .description("Lists all currently registered bridge method names")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.listAvailableMethods",
+            "Lists all currently registered bridge method names",
+            0,
+            args -> BridgeResult.ok(new ArrayList<>(ModuleRegistry.listMethodNames()))
+        );
+        registerMethod(
+            "pz.bridge.runtime.listMethods",
+            "Stable alias for listing all currently registered bridge methods",
+            0,
             args -> BridgeResult.ok(new ArrayList<>(ModuleRegistry.listMethodNames()))
         );
 
-        ModuleRegistry.register(
-            BridgeMethodDefinition.builder("pz.bridge.debug.bridgeSnapshot")
-                .description("Returns loader and bridge registration state for runtime diagnostics")
-                .build(),
+        registerMethod(
+            "pz.bridge.debug.bridgeSnapshot",
+            "Returns loader and bridge registration state for runtime diagnostics",
+            0,
+            args -> BridgeResult.ok(bridgeSnapshot())
+        );
+        registerMethod(
+            "pz.bridge.runtime.snapshot",
+            "Stable alias for runtime bridge diagnostics",
+            0,
             args -> BridgeResult.ok(bridgeSnapshot())
         );
 
         registered = true;
+    }
+
+    private static void registerMethod(
+        String methodName,
+        String description,
+        int minArgCount,
+        java.util.function.Function<Object[], BridgeResult> handler
+    ) {
+        BridgeMethodDefinition.Builder builder = BridgeMethodDefinition.builder(methodName)
+            .description(description);
+
+        if (minArgCount > 0) {
+            builder.minArgCount(minArgCount);
+        }
+
+        ModuleRegistry.register(builder.build(), handler::apply);
     }
 
     private static boolean isLocalIdentityReady() {
@@ -344,6 +574,7 @@ public final class DebugBridge {
         result.put("assignMechanicRole", RoleService.assign(identity, identity, "mechanic", null, null));
         result.put("hasMechanicRole", RoleService.has(identity, "mechanic", null, null));
         result.put("roles", RoleService.list(identity));
+        result.put("persistencePriority", "high");
         return result;
     }
 
@@ -352,6 +583,7 @@ public final class DebugBridge {
         result.put("reason", reason);
         result.put("ready", isLocalIdentityReady());
         result.put("lifecycle", IdentityLifecycleService.snapshot().toMap());
+        result.put("lifecycleDiagnostics", IdentityLifecycleBridge.diagnostics());
         result.put("authSelfTest", AuthSelfTestService.getStatus());
 
         PlayerIdentity identity = IdentityLifecycleService.getLastIdentity();
@@ -359,6 +591,9 @@ public final class DebugBridge {
         result.put("playerNum", IdentityLifecycleService.getLastResolvedPlayerNum());
         result.put("accountExternalId", identity != null ? identity.getAccountExternalId() : null);
         result.put("identity", identity != null ? identity.toMap() : null);
+        result.put("resolutionSource", IdentityLifecycleService.getLastResolutionSource());
+        result.put("resolutionAuthoritative", IdentityLifecycleService.isLastResolutionAuthoritative());
+        result.put("resolutionEpochMs", IdentityLifecycleService.getLastResolutionEpochMs());
         return result;
     }
 
@@ -367,6 +602,7 @@ public final class DebugBridge {
         result.put("registered", registered);
         result.put("loader", LoaderBootstrap.snapshot());
         result.put("methodCount", ModuleRegistry.count());
+        result.put("identity", IdentityLifecycleBridge.diagnostics());
 
         Map<String, Map<String, Object>> definitions = new LinkedHashMap<>();
         for (Map.Entry<String, BridgeMethodDefinition> entry : ModuleRegistry.getAllDefinitions().entrySet()) {
