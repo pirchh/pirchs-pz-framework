@@ -43,37 +43,39 @@ public final class BankService {
         );
     }
 
-    public static int countCarriedMoney() {
+    public static CashInventorySnapshot getCashInventorySnapshot() {
         LocalPlayerIdentityResolver.requireLocalIdentity();
-        return CashInventoryService.countLocalPlayerMoney();
+        return CashInventoryService.snapshotLocalPlayerMoney();
+    }
+
+    public static int countCarriedMoney() {
+        return getCashInventorySnapshot().totalMoney();
     }
 
     public static BankTransactionResult depositCarriedMoney(PlayerIdentity identity, int amount) {
         PlayerIdentityService.validate(identity);
 
         int balanceBefore = getBalance(identity);
-        int carriedBefore = CashInventoryService.countLocalPlayerMoney();
+        CashInventorySnapshot before = CashInventoryService.snapshotLocalPlayerMoney();
         if (amount <= 0) {
             throw new IllegalArgumentException("Deposit amount must be greater than 0");
         }
-        if (carriedBefore < amount) {
+        if (before.totalMoney() < amount) {
             throw new IllegalStateException("You tried to deposit more money than you are carrying");
         }
 
         int processed = CashInventoryService.removeLocalPlayerMoney(amount);
         int balanceAfter = PostgresAccountRepository.deposit(identity, processed);
-        int carriedAfter = CashInventoryService.countLocalPlayerMoney();
+        CashInventorySnapshot after = CashInventoryService.snapshotLocalPlayerMoney();
 
-        return new BankTransactionResult(
+        return transactionResult(
             "depositCarriedMoney",
             amount,
             processed,
             balanceBefore,
             balanceAfter,
-            carriedBefore,
-            carriedAfter,
-            true,
-            null
+            before,
+            after
         );
     }
 
@@ -92,7 +94,7 @@ public final class BankService {
         PlayerIdentityService.validate(identity);
 
         int balanceBefore = getBalance(identity);
-        int carriedBefore = CashInventoryService.countLocalPlayerMoney();
+        CashInventorySnapshot before = CashInventoryService.snapshotLocalPlayerMoney();
         if (amount <= 0) {
             throw new IllegalArgumentException("Withdraw amount must be greater than 0");
         }
@@ -106,16 +108,108 @@ public final class BankService {
         }
 
         int balanceAfter = PostgresAccountRepository.withdraw(identity, granted);
-        int carriedAfter = CashInventoryService.countLocalPlayerMoney();
+        CashInventorySnapshot after = CashInventoryService.snapshotLocalPlayerMoney();
 
-        return new BankTransactionResult(
+        return transactionResult(
             "withdrawCashToInventory",
             amount,
             granted,
             balanceBefore,
             balanceAfter,
-            carriedBefore,
-            carriedAfter,
+            before,
+            after
+        );
+    }
+
+    public static BankTransactionResult moveCashToWallet(PlayerIdentity identity, int amount) {
+        PlayerIdentityService.validate(identity);
+
+        int balanceBefore = getBalance(identity);
+        CashInventorySnapshot before = CashInventoryService.snapshotLocalPlayerMoney();
+        if (amount <= 0) {
+            throw new IllegalArgumentException("Wallet transfer amount must be greater than 0");
+        }
+
+        int moved = CashInventoryService.moveLooseLocalPlayerMoneyToWallet(amount);
+        CashInventorySnapshot after = CashInventoryService.snapshotLocalPlayerMoney();
+
+        return transactionResult(
+            "moveCashToWallet",
+            amount,
+            moved,
+            balanceBefore,
+            balanceBefore,
+            before,
+            after
+        );
+    }
+
+    public static BankTransactionResult moveCashFromWallet(PlayerIdentity identity, int amount) {
+        PlayerIdentityService.validate(identity);
+
+        int balanceBefore = getBalance(identity);
+        CashInventorySnapshot before = CashInventoryService.snapshotLocalPlayerMoney();
+        if (amount <= 0) {
+            throw new IllegalArgumentException("Wallet transfer amount must be greater than 0");
+        }
+
+        int moved = CashInventoryService.moveWalletLocalPlayerMoneyToInventory(amount);
+        CashInventorySnapshot after = CashInventoryService.snapshotLocalPlayerMoney();
+
+        return transactionResult(
+            "moveCashFromWallet",
+            amount,
+            moved,
+            balanceBefore,
+            balanceBefore,
+            before,
+            after
+        );
+    }
+
+    public static BankTransactionResult moveAllLooseCashToWallet(PlayerIdentity identity) {
+        PlayerIdentityService.validate(identity);
+
+        int looseBefore = CashInventoryService.countLooseLocalPlayerMoney();
+        if (looseBefore <= 0) {
+            throw new IllegalStateException("You are not carrying any loose cash");
+        }
+
+        return moveCashToWallet(identity, looseBefore);
+    }
+
+    public static BankTransactionResult moveAllWalletCashToInventory(PlayerIdentity identity) {
+        PlayerIdentityService.validate(identity);
+
+        int walletBefore = CashInventoryService.countWalletLocalPlayerMoney();
+        if (walletBefore <= 0) {
+            throw new IllegalStateException("Your wallet is not carrying any cash");
+        }
+
+        return moveCashFromWallet(identity, walletBefore);
+    }
+
+    private static BankTransactionResult transactionResult(
+        String action,
+        int requestedAmount,
+        int processedAmount,
+        int balanceBefore,
+        int balanceAfter,
+        CashInventorySnapshot before,
+        CashInventorySnapshot after
+    ) {
+        return new BankTransactionResult(
+            action,
+            requestedAmount,
+            processedAmount,
+            balanceBefore,
+            balanceAfter,
+            before.totalMoney(),
+            after.totalMoney(),
+            before.looseMoney(),
+            after.looseMoney(),
+            before.walletMoney(),
+            after.walletMoney(),
             true,
             null
         );

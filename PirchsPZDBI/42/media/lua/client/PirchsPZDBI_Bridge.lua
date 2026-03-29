@@ -32,11 +32,16 @@ local debug_methods = {
     getBalance = "pz.bridge.debug.getBalance",
     bankSnapshot = "pz.bridge.debug.bankSnapshot",
     getCarriedMoney = "pz.bridge.debug.getCarriedMoney",
+    getCashInventorySnapshot = "pz.bridge.debug.getCashInventorySnapshot",
     depositSelf = "pz.bridge.debug.depositSelf",
     withdrawSelf = "pz.bridge.debug.withdrawSelf",
     depositCarriedMoneySelf = "pz.bridge.debug.depositCarriedMoneySelf",
     depositAllCarriedMoneySelf = "pz.bridge.debug.depositAllCarriedMoneySelf",
     withdrawCashToInventorySelf = "pz.bridge.debug.withdrawCashToInventorySelf",
+    moveCashToWalletSelf = "pz.bridge.debug.moveCashToWalletSelf",
+    moveAllCashToWalletSelf = "pz.bridge.debug.moveAllCashToWalletSelf",
+    moveCashFromWalletSelf = "pz.bridge.debug.moveCashFromWalletSelf",
+    moveAllCashFromWalletSelf = "pz.bridge.debug.moveAllCashFromWalletSelf",
 }
 
 local function hasGlobalBridge()

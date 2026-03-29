@@ -1,0 +1,22 @@
+module PirchsPZDBI
+{
+    item PirchCash
+    {
+        DisplayName = Cash,
+        ItemType = base:normal,
+        Weight = 0.001,
+        Icon = PirchCash,
+    }
+
+    item PirchWallet
+    {
+        DisplayName = Wallet,
+        ItemType = base:container,
+        Weight = 0.10,
+        Icon = PirchWallet,
+        BodyLocation = base:fannypackfront,
+        CanBeEquipped = base:fannypackfront,
+        Capacity = 50,
+        WeightReduction = 95,
+    }
+}
