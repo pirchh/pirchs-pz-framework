@@ -47,6 +47,11 @@ local TAB_ACTIONS = {
         { id = "GET_BALANCE", label = "Get Balance" },
         { id = "BANK_SNAPSHOT", label = "Bank Snapshot" },
         { id = "GET_CARRIED_MONEY", label = "Get Carried Cash" },
+        { id = "GET_CASH_INVENTORY", label = "Cash Inventory Snapshot" },
+        { id = "MOVE_TO_WALLET_TYPED", label = "Move Typed To Wallet" },
+        { id = "MOVE_ALL_TO_WALLET", label = "Move All To Wallet" },
+        { id = "MOVE_FROM_WALLET_TYPED", label = "Move Typed From Wallet" },
+        { id = "MOVE_ALL_FROM_WALLET", label = "Move All From Wallet" },
         { id = "DEPOSIT_TYPED", label = "Deposit Typed" },
         { id = "WITHDRAW_TYPED", label = "Withdraw Typed" },
         { id = "DEPOSIT_10", label = "Deposit 10" },
@@ -94,6 +99,11 @@ local METHOD = {
     GET_BALANCE = "pz.bridge.debug.getBalance",
     BANK_SNAPSHOT = "pz.bridge.debug.bankSnapshot",
     GET_CARRIED_MONEY = "pz.bridge.debug.getCarriedMoney",
+    GET_CASH_INVENTORY = "pz.bridge.debug.getCashInventorySnapshot",
+    MOVE_TO_WALLET_TYPED = "pz.bridge.debug.moveCashToWalletSelf",
+    MOVE_ALL_TO_WALLET = "pz.bridge.debug.moveAllCashToWalletSelf",
+    MOVE_FROM_WALLET_TYPED = "pz.bridge.debug.moveCashFromWalletSelf",
+    MOVE_ALL_FROM_WALLET = "pz.bridge.debug.moveAllCashFromWalletSelf",
     DEPOSIT_TYPED = "pz.bridge.debug.depositCarriedMoneySelf",
     WITHDRAW_TYPED = "pz.bridge.debug.withdrawCashToInventorySelf",
     DEPOSIT_ALL = "pz.bridge.debug.depositAllCarriedMoneySelf",
@@ -571,6 +581,24 @@ function PirchsPZDBIDebugMenu:onActionClicked(button)
         self:invokeById("BANK_SNAPSHOT")
     elseif button.internal == "GET_CARRIED_MONEY" then
         self:invokeById("GET_CARRIED_MONEY")
+    elseif button.internal == "GET_CASH_INVENTORY" then
+        self:invokeById("GET_CASH_INVENTORY")
+    elseif button.internal == "MOVE_TO_WALLET_TYPED" then
+        if not amount then
+            self:finishCall("bank amount", false, amountErr)
+            return
+        end
+        self:invokeById("MOVE_TO_WALLET_TYPED", tostring(amount))
+    elseif button.internal == "MOVE_ALL_TO_WALLET" then
+        self:invokeById("MOVE_ALL_TO_WALLET")
+    elseif button.internal == "MOVE_FROM_WALLET_TYPED" then
+        if not amount then
+            self:finishCall("bank amount", false, amountErr)
+            return
+        end
+        self:invokeById("MOVE_FROM_WALLET_TYPED", tostring(amount))
+    elseif button.internal == "MOVE_ALL_FROM_WALLET" then
+        self:invokeById("MOVE_ALL_FROM_WALLET")
     elseif button.internal == "DEPOSIT_TYPED" then
         if not amount then
             self:finishCall("bank amount", false, amountErr)
@@ -704,7 +732,7 @@ local function createMenu()
     ui:setVisible(true)
     ui:updateWrappedResult("idle")
     ui:pushLine("debug menu opened")
-    ui:pushLine("banking pass: carried cash + typed deposit/withdraw + quick amount buttons")
+    ui:pushLine("banking pass: loose cash, wallet cash, typed deposit/withdraw, and wallet move actions")
     return ui
 end
 
